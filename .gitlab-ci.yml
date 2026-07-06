@@ -9,10 +9,25 @@
 #   RAILWAY_TOKEN — a Railway *project* token (Project > Settings > Tokens).
 
 stages:
+  - debug
   - deploy
 
 variables:
   RAILWAY_SERVICE: "soothing-appreciation"   # service name in the Railway project
+
+# TEMPORARY: prints what the RAILWAY_TOKEN can actually see. Delete once fixed.
+railway-debug:
+  stage: debug
+  image: ghcr.io/railwayapp/cli:latest
+  script:
+    - echo "=== whoami (blank/err = project token, which is fine) ==="
+    - railway whoami || true
+    - echo "=== status: the project + environment this token is linked to ==="
+    - railway status || true
+    - echo "=== the service name I am about to deploy to ==="
+    - echo "RAILWAY_SERVICE='$RAILWAY_SERVICE'"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 # Auto-deploy every push to the default branch.
 railway-deploy:
