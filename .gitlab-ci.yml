@@ -1,12 +1,42 @@
-workflow:
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+# GitLab CI/CD — deploy OpenEMR to Railway
+#
+# Railway builds the image itself (from docker/flex/Dockerfile or Nixpacks),
+# so this pipeline only pushes the repo and triggers a deploy via the Railway
+# CLI. Provision the MySQL service, a persistent volume, and the OpenEMR env
+# vars (MYSQL_HOST/USER/PASS/DATABASE, OE_USER, OE_PASS, ...) in Railway itself.
+#
+# Required GitLab variable (Settings > CI/CD > Variables, Masked + Protected):
+#   RAILWAY_TOKEN — a Railway *project* token (Project > Settings > Tokens).
 
 stages:
   - deploy
 
+variables:
+  RAILWAY_SERVICE: "soothing-appreciation"   # service name in the Railway project
+
+# Auto-deploy every push to the default branch.
 railway-deploy:
   stage: deploy
   image: ghcr.io/railwayapp/cli:latest
+  environment:
+    name: production
+    url: https://your-app.up.railway.app     # replace with your Railway domain
   script:
-    - RAILWAY_TOKEN=$RAILWAY_TOKEN railway up --service "soothing-appreciation" --detach
+    # --ci streams build logs and exits non-zero if the deploy fails,
+    # so a broken deploy turns the pipeline red instead of passing silently.
+    - railway up --ci --service "$RAILWAY_SERVICE"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Optional manual deploy button for any other branch (e.g. staging).
+railway-deploy:manual:
+  stage: deploy
+  image: ghcr.io/railwayapp/cli:latest
+  environment:
+    name: review/$CI_COMMIT_REF_SLUG
+  script:
+    - railway up --ci --service "$RAILWAY_SERVICE"
+  rules:
+    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true
