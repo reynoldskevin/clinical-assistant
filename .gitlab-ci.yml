@@ -7,9 +7,9 @@ stages:
 
 railway-deploy:
   stage: deploy
-  image: ghcr.io/railwayapp/cli:v4.37.4
+  image: ghcr.io/railwayapp/cli:latest
   variables:
     # This automatically picks up the RAILWAY_TOKEN variable from GitLab Settings
     RAILWAY_TOKEN: $RAILWAY_TOKEN
   script:
-    - railway up --service=$RAILWAY_SERVICE_ID --detach
+    - RAILWAY_TOKEN=$RAILWAY_TOKEN railway up --service=$RAILWAY_SERVICE_ID --detach
