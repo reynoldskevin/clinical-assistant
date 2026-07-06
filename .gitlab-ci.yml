@@ -1,0 +1,15 @@
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+stages:
+  - deploy
+
+railway-deploy:
+  stage: deploy
+  image: ghcr.io/railwayapp/cli:latest
+  variables:
+    # This automatically picks up the RAILWAY_TOKEN variable from GitLab Settings
+    RAILWAY_TOKEN: $RAILWAY_TOKEN
+  script:
+    - railway up --service=$RAILWAY_SERVICE_ID --detach
