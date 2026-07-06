@@ -14,7 +14,6 @@ stages:
 
 variables:
   RAILWAY_SERVICE: "truthful-peace"   # service name in the Railway project
-  RAILWAY_TOKEN: $RAILWAY_TOKEN
 
 # TEMPORARY: prints what the RAILWAY_TOKEN can actually see. Delete once fixed.
 railway-debug:
