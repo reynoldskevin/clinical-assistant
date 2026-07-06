@@ -22,7 +22,7 @@ railway-debug:
   script:
     - echo "=== whoami (blank/err = project token, which is fine) ==="
     - railway whoami || true
-    - echo "=== status: the project + environment this token is linked to ==="
+    - echo "=== status the project + environment this token is linked to ==="
     - railway status || true
     - echo "=== the service name I am about to deploy to ==="
     - echo "RAILWAY_SERVICE='$RAILWAY_SERVICE'"
