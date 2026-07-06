@@ -9,4 +9,4 @@ railway-deploy:
   stage: deploy
   image: ghcr.io/railwayapp/cli:latest
   script:
-    - RAILWAY_TOKEN=$RAILWAY_TOKEN railway up --service "$RAILWAY_SERVICE_ID" --detach
+    - RAILWAY_TOKEN=$RAILWAY_TOKEN railway up --service "soothing-appreciation" --detach
