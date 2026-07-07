@@ -26,6 +26,9 @@ railway-debug:
     - RAILWAY_TOKEN=$RAILWAY_TOKEN railway status || true
     - echo "=== the service name I am about to deploy to ==="
     - echo "RAILWAY_SERVICE='$RAILWAY_SERVICE'"
+    - echo "=== the gitlab repo name I am about to deploy ==="
+    - echo "FLEX_REPOSITORY='$FLEX_REPOSITORY'"
+    - echo "FLEX_REPOSITORY_BRANCH='$FLEX_REPOSITORY_BRANCH'"
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
@@ -39,7 +42,7 @@ railway-deploy:
   script:
     # --ci streams build logs and exits non-zero if the deploy fails,
     # so a broken deploy turns the pipeline red instead of passing silently.
-    - RAILWAY_TOKEN=$RAILWAY_TOKEN railway up --ci --service "$RAILWAY_SERVICE" --no-gitignore
+    - RAILWAY_TOKEN=$RAILWAY_TOKEN FLEX_REPOSITORY=$FLEX_REPOSITORY FLEX_REPOSITORY_BRANCH=main railway up --ci --service "$RAILWAY_SERVICE" --no-gitignore
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
@@ -50,7 +53,7 @@ railway-deploy:manual:
   environment:
     name: review/$CI_COMMIT_REF_SLUG
   script:
-    - RAILWAY_TOKEN=$RAILWAY_TOKEN railway up --ci --service "$RAILWAY_SERVICE"
+    - RAILWAY_TOKEN=$RAILWAY_TOKEN FLEX_REPOSITORY=$FLEX_REPOSITORY FLEX_REPOSITORY_BRANCH=main railway up --ci --service "$RAILWAY_SERVICE"
   rules:
     - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
       when: manual
