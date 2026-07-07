@@ -39,7 +39,7 @@ railway-deploy:
   script:
     # --ci streams build logs and exits non-zero if the deploy fails,
     # so a broken deploy turns the pipeline red instead of passing silently.
-    - RAILWAY_TOKEN=$RAILWAY_TOKEN railway up --ci --service "$RAILWAY_SERVICE"
+    - RAILWAY_TOKEN=$RAILWAY_TOKEN railway up --ci --service "$RAILWAY_SERVICE" --no-gitignore
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
