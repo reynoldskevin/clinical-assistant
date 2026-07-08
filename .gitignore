@@ -51,3 +51,9 @@ docker/development-easy-redis/docker-compose.override.yml
 compose.override.yml
 tmp/
 .webpack-cache/
+ARCHITECTURE_AUDIT.md
+.gitignore
+COMPLIANCE_AUDIT.md
+DATA_QUALITY_AUDIT.md
+PERF_AUDIT.md
+ARCHITECTURE_DEFENSE.md
