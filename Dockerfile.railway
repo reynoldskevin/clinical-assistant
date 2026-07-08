@@ -1,0 +1,15 @@
+# Railway build target for OpenEMR.
+#
+# WHY THIS EXISTS: Railway's default builder (Nixpacks) cannot build the OpenEMR
+# monorepo, so `railway up` fails. Instead of rebuilding the heavy multi-stage
+# docker/flex/Dockerfile on every deploy (slow, and it can build the wrong
+# stage), this deploys the PREBUILT official "flex" image — near-zero build.
+#
+# The flex image fetches OpenEMR source at runtime from the FLEX_REPOSITORY /
+# FLEX_REPOSITORY_BRANCH env vars and serves it via Apache on port 80. Set those
+# (and the MYSQL_* / OE_* vars) in the Railway service, and point Railway's
+# exposed/target port at 80.
+#
+# Pin to a digest for reproducible deploys if you want, e.g.:
+#   FROM openemr/openemr:flex@sha256:<digest>
+FROM openemr/openemr:flex
