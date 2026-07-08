@@ -1,60 +1,9 @@
-# GitLab CI/CD — deploy OpenEMR to Railway
-#
-# Railway builds the image itself (from docker/flex/Dockerfile or Nixpacks),
-# so this pipeline only pushes the repo and triggers a deploy via the Railway
-# CLI. Provision the MySQL service, a persistent volume, and the OpenEMR env
-# vars (MYSQL_HOST/USER/PASS/DATABASE, OE_USER, OE_PASS, ...) in Railway itself.
-#
-# Required GitLab variable (Settings > CI/CD > Variables, Masked + Protected):
-#   RAILWAY_TOKEN — a Railway *project* token (Project > Settings > Tokens).
-
-stages:
-  - debug
-  - deploy
-
-variables:
-  RAILWAY_SERVICE: "truthful-peace"   # service name in the Railway project
-
-# TEMPORARY: prints what the RAILWAY_TOKEN can actually see. Delete once fixed.
-railway-debug:
-  stage: debug
-  image: ghcr.io/railwayapp/cli:latest
-  script:
-    - echo "=== whoami (blank/err = project token, which is fine) ==="
-    - RAILWAY_TOKEN=$RAILWAY_TOKEN railway whoami || true
-    - echo "=== status the project + environment this token is linked to ==="
-    - RAILWAY_TOKEN=$RAILWAY_TOKEN railway status || true
-    - echo "=== the service name I am about to deploy to ==="
-    - echo "RAILWAY_SERVICE='$RAILWAY_SERVICE'"
-    - echo "=== the gitlab repo name I am about to deploy ==="
-    - echo "FLEX_REPOSITORY='$FLEX_REPOSITORY'"
-    - echo "FLEX_REPOSITORY_BRANCH='$FLEX_REPOSITORY_BRANCH'"
+workflow:
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-# Auto-deploy every push to the default branch.
 railway-deploy:
   stage: deploy
   image: ghcr.io/railwayapp/cli:latest
-  environment:
-    name: production
-    url: https://your-app.up.railway.app     # replace with your Railway domain
   script:
-    # --ci streams build logs and exits non-zero if the deploy fails,
-    # so a broken deploy turns the pipeline red instead of passing silently.
-    - RAILWAY_TOKEN=$RAILWAY_TOKEN FLEX_REPOSITORY=$FLEX_REPOSITORY FLEX_REPOSITORY_BRANCH=main railway up --ci --service "$RAILWAY_SERVICE" --no-gitignore
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-
-# Optional manual deploy button for any other branch (e.g. staging).
-railway-deploy:manual:
-  stage: deploy
-  image: ghcr.io/railwayapp/cli:latest
-  environment:
-    name: review/$CI_COMMIT_REF_SLUG
-  script:
-    - RAILWAY_TOKEN=$RAILWAY_TOKEN FLEX_REPOSITORY=$FLEX_REPOSITORY FLEX_REPOSITORY_BRANCH=main railway up --ci --service "$RAILWAY_SERVICE"
-  rules:
-    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
-      when: manual
-      allow_failure: true
+    - RAILWAY_TOKEN=$RAILWAY_TOKEN railway up --service=$RAILWAY_SERVICE
