@@ -43,9 +43,10 @@ $fail = static function (int $status, string $message): never {
 
 $session = SessionWrapperFactory::getInstance()->getActiveSession();
 
-// 1. Authenticated session required.
-$clinicianId = (int) ($_SESSION['authUserID'] ?? 0);
-$clinicianUsername = (string) ($_SESSION['authUser'] ?? '');
+// 1. Authenticated session required. OpenEMR keeps auth state in the session
+//    wrapper, not the $_SESSION superglobal, so read it through the wrapper.
+$clinicianId = (int) $session->get('authUserID');
+$clinicianUsername = (string) $session->get('authUser');
 if ($clinicianId <= 0 || $clinicianUsername === '') {
     $fail(401, 'Not authenticated');
 }
@@ -56,7 +57,7 @@ if (!CsrfUtils::verifyCsrfToken($_POST['csrf_token'] ?? '', session: $session)) 
 }
 
 // 3. Patient scope from the session.
-$pid = (int) ($_SESSION['pid'] ?? 0);
+$pid = (int) $session->get('pid');
 if ($pid <= 0) {
     $fail(400, 'No patient in context');
 }

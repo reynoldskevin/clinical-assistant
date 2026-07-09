@@ -38,8 +38,10 @@
     var tokenUrl = new URL('token.php', document.currentScript ? document.currentScript.src : window.location.href).href;
     var sidecarUrl = root.dataset.sidecarUrl || '/ai-agent-sidecar/ask';
 
-    // OpenEMR exposes the page CSRF token as a global (csrf_token_js).
-    var csrfToken = (typeof window.csrf_token_js !== 'undefined') ? window.csrf_token_js : '';
+    // The CSRF token is embedded server-side on the card (data-csrf); fall back
+    // to OpenEMR's page global (csrf_token_js) where one is present.
+    var csrfToken = root.dataset.csrf
+        || ((typeof window.csrf_token_js !== 'undefined') ? window.csrf_token_js : '');
 
     function setBusy(busy) {
         if (submit) {
