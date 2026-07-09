@@ -46,7 +46,7 @@ final class AgentCard
 <div id="oe-ai-agent" class="oe-ai-agent card mb-2" data-pid="{$pid}"{$sidecarAttr}{$csrfAttr}>
     <div class="card-body">
         <h5 class="card-title oe-ai-agent-title">AI Clinical Co-Pilot</h5>
-        <p class="oe-ai-agent-answer" role="status" aria-live="polite"></p>
+        <div class="oe-ai-agent-answer" role="status" aria-live="polite"></div>
         <form class="oe-ai-agent-form">
             <textarea class="oe-ai-agent-question form-control" rows="2"
                 placeholder="Ask about this patient..." aria-label="Question for the AI Clinical Co-Pilot"></textarea>
