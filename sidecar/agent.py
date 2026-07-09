@@ -14,6 +14,8 @@ from __future__ import annotations
 import json
 from typing import Any, Callable
 
+from observability import NullObserver
+
 # The response object returned by the message-creator (SDK Message shape).
 MessageResponse = Any
 
@@ -42,11 +44,13 @@ class ClaudeAgent:
         boundary: Boundary,
         model: str = "claude-opus-4-8",
         max_tokens: int = 4096,
+        observer: Any = None,
     ) -> None:
         self._message_creator = message_creator
         self._boundary = boundary
         self._model = model
         self._max_tokens = max_tokens
+        self._observer = observer or NullObserver()
 
     def _tools(self) -> list[dict[str, Any]]:
         return [
@@ -79,6 +83,12 @@ class ClaudeAgent:
                 messages=messages,
             )
 
+            usage = getattr(resp, "usage", None)
+            self._observer.record_model_response(
+                getattr(usage, "input_tokens", 0) if usage else 0,
+                getattr(usage, "output_tokens", 0) if usage else 0,
+            )
+
             tool_uses = [
                 block
                 for block in resp.content
@@ -98,15 +108,31 @@ class ClaudeAgent:
             for block in tool_uses:
                 if block.name == "get_patient_summary":
                     # Fixed session pid — ignore any model-supplied input.
-                    summary = self._boundary(pid)
-                    tool_results.append(
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": json.dumps(summary),
-                        }
-                    )
+                    try:
+                        summary = self._boundary(pid)
+                    except Exception:
+                        # Record the failure and feed an error result back so the
+                        # model can respond; the loop must not crash.
+                        self._observer.record_tool_call("get_patient_summary", False)
+                        tool_results.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": block.id,
+                                "is_error": True,
+                                "content": "Failed to retrieve the patient summary.",
+                            }
+                        )
+                    else:
+                        self._observer.record_tool_call("get_patient_summary", True)
+                        tool_results.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": block.id,
+                                "content": json.dumps(summary),
+                            }
+                        )
                 else:
+                    self._observer.record_tool_call(block.name, False)
                     tool_results.append(
                         {
                             "type": "tool_result",
