@@ -1,7 +1,7 @@
 ---
 id: 05b
 title: Register vitals/labs as encounter forms (UI visibility)
-status: tests-authored
+status: ready-for-merge
 depends_on: [05]
 branch: ticket/05b-register-forms
 base_branch: ticket/05-etl-observations
