@@ -1,7 +1,7 @@
 ---
 id: 09c
 title: SigningKey value object — enforce HS256 key strength (>=32 bytes)
-status: tests-authored
+status: ready-for-merge
 depends_on: [08]
 branch: ticket/09c-token-endpoint
 base_branch: ticket/09b-boundary-controller
