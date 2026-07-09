@@ -1,0 +1,2 @@
+# Local sidecar secrets (Anthropic API key etc.) — never committed.
+.env

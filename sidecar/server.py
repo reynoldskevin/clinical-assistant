@@ -113,7 +113,30 @@ def make_handler(agent_builder: AgentBuilder, allow_origin: str) -> type[BaseHTT
     return Handler
 
 
+def load_env_file(path: str) -> None:
+    """Load simple KEY=VALUE lines from a .env file into os.environ.
+
+    Best-effort and dependency-free: blank lines and '#' comments are skipped,
+    surrounding quotes are stripped, and existing environment variables are not
+    overwritten (an explicit export always wins over the file).
+    """
+    if not os.path.isfile(path):
+        return
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if line == "" or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip("'").strip('"')
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+
 def main() -> None:
+    load_env_file(os.path.join(os.path.dirname(__file__), ".env"))
+
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         raise SystemExit("ANTHROPIC_API_KEY is required to run the sidecar.")
