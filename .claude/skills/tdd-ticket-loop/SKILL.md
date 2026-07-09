@@ -1,0 +1,169 @@
+---
+name: tdd-ticket-loop
+description: >-
+  Orchestrate coding sub-agents through a test-driven, ticket-by-ticket build loop.
+  Use AFTER plan mode when the user wants to turn an approved build plan into tickets
+  and have Claude Code drive sub-agents to implement them via TDD until acceptance
+  criteria pass. Trigger phrases: "run the ticket loop", "orchestrate the build",
+  "TDD the plan with sub-agents", "loop sub-agents to build this". Coding tasks only.
+---
+
+# TDD Ticket Loop — sub-agent build orchestrator
+
+You (the main Claude Code agent) are the **orchestrator**. You decompose an
+approved plan into tickets and drive them to completion one at a time, spawning
+sub-agents for implementation and review, running the tests yourself, and looping
+until each ticket's acceptance criteria pass. This skill is for **coding tasks
+only**.
+
+## Locked design decisions (do not deviate without asking the user)
+
+1. **Sequential** — one ticket at a time, in dependency order. Never run tickets in parallel.
+2. **Stacked branches** — ticket 1 branches off the base branch; each later ticket branches off the **previous ticket's branch**, so dependent work sees prior code. Never auto-merge into the base branch.
+3. **Orchestrator authors the tests** — YOU write each ticket's tests (unit + end-to-end as appropriate) from its acceptance criteria, and commit them, BEFORE any implementation. Tests are the contract.
+4. **Tests are locked** — the implementer sub-agent may NOT create/edit/delete test files. It writes production code to make the tests pass. If it believes a test is genuinely wrong, it must STOP and report that to you; you decide (fix the test yourself or escalate to the user). After every implementer run, verify the test files are unchanged (`git diff` on test paths); if changed, revert them and re-dispatch with a warning (counts toward the cap).
+5. **Orchestrator-controlled loop** — do not trust a sub-agent's claim that tests pass. After each implementer attempt, **run the tests yourself** and read the real output.
+6. **Reviewer gate** — after tests are green, spawn a separate reviewer sub-agent to verify the diff against the acceptance criteria and that the tests are meaningful (not gamed) and unchanged. Reviewer rejection feeds back into the loop.
+7. **Full regression after green** — once the ticket's own tests pass and the reviewer approves, run the FULL test suite on the branch (it includes accumulated stacked work). A regression halts the ticket for repair before it's marked done.
+8. **No merge — push for review instead.** When a ticket reaches ready-for-merge, `git push -u origin <branch>` and relay the "create merge request" URL the remote prints. The human reviews + merges in the GitLab GUI. Never merge to the base branch yourself. Push ONLY completed tickets (never WIP/blocked). A push failure is NOT a ticket failure — report it and continue. Never `--force`.
+9. **No breakdown pause** — decompose and start immediately; do not wait for approval of the ticket list.
+10. **Iteration cap → escalate** — each ticket has a max-attempts budget (default **6**). On exhaustion, STOP that ticket, write a clear failure report (what failed, last test output, hypotheses), and ask the user how to proceed. Never loop indefinitely.
+11. **Commit hygiene — stage explicit paths only.** When committing a ticket, `git add` ONLY that ticket's own files: its production code, its test file(s), and its own `.claude/tickets/<this-ticket>.md`. NEVER `git add .` or a whole directory (e.g. `git add .claude/tickets`). Because Step 1 writes ALL ticket files up front, a directory add would commit *future* tickets' `.md` files (and any unrelated working-tree edits) onto this ticket's branch — exactly the leak to avoid.
+
+## Config (defaults; confirm/override from the user's request)
+
+- `BASE_BRANCH` = the current branch at invocation (usually `main`).
+- `MAX_ATTEMPTS` = 6 per ticket (implementer attempts + reviewer-driven redos combined).
+- `TICKETS_DIR` = `.claude/tickets/`.
+- **Test runner** — auto-detect; do not hardcode. Detect from the repo:
+  PHP → `phpunit`/`composer test` (this repo: `openemr-cmd ut|at|et|st` or `composer phpunit-isolated`);
+  JS/TS → `npm test` / `jest`; Python → `pytest`; Go → `go test ./...`. Record the exact command(s) per ticket in its ticket file. If ambiguous, ask the user once.
+
+## Preconditions
+
+- Invoked **after plan mode** with an approved plan (from the plan, `BUILD_PLAN.md`, or the user's message). If no plan is available, ask for one — do not invent scope.
+- Working tree is clean (commit/stash first). Confirm the base branch.
+
+## Step 1 — Decompose the plan into tickets
+
+Break the plan into the **smallest independently-testable** units. For each,
+write a ticket file `TICKETS_DIR/NNN-slug.md`:
+
+```markdown
+---
+id: 003
+title: get_patient_summary boundary endpoint
+status: todo            # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
+depends_on: [001, 002]
+branch: ticket/003-get-patient-summary
+base_branch: ticket/002-...    # previous ticket's branch (stacked)
+test_command: "openemr-cmd ut -- --filter PatientSummary"
+full_suite_command: "openemr-cmd cst"
+attempts: 0
+---
+
+## Description
+<what and why, 2-4 lines>
+
+## Acceptance criteria
+- [ ] <observable, testable behavior 1>
+- [ ] <behavior 2>
+
+## Test plan (orchestrator authors these)
+- unit: <files/cases to write>
+- e2e: <files/cases to write>
+```
+
+Track the tickets in the session Task list too (one task per ticket). Then begin
+executing immediately (no approval pause).
+
+## Step 2 — Per-ticket loop (the core algorithm)
+
+For each ticket in dependency order:
+
+```
+1. BRANCH: git checkout <base_branch for this ticket>; git checkout -b <ticket.branch>
+   (ticket 1's base = BASE_BRANCH; ticket N's base = ticket N-1's branch)
+
+2. AUTHOR TESTS (you, the orchestrator): write the unit + e2e tests from the
+   acceptance criteria. Run them → confirm they FAIL for the right reason (red).
+   STAGE ONLY THIS TICKET'S PATHS: `git add <this ticket's test file(s)> .claude/tickets/<THIS-ticket>.md`.
+   NEVER `git add .` or a whole directory (e.g. `git add .claude/tickets`) — Step 1
+   writes ALL ticket files up front, so a directory add drags *future* tickets'
+   ticket-files (and unrelated working-tree edits) onto this branch. Commit:
+   "test(<id>): acceptance tests for <title>". Set status: tests-authored.
+
+3. IMPLEMENT LOOP:
+   attempts = 0
+   repeat:
+     attempts++ ; if attempts > MAX_ATTEMPTS → ESCALATE (see below); stop ticket.
+     spawn IMPLEMENTER sub-agent (template below) with: ticket, acceptance criteria,
+       the exact test_command, the test-lock rule, and the PREVIOUS failure output.
+     verify test files unchanged (git diff --name-only on test paths). If changed →
+       revert them, note a warning, continue loop.
+     run test_command YOURSELF; read output.
+     if all green → break.
+
+4. REVIEW: spawn REVIEWER sub-agent (template below) with the diff + acceptance
+   criteria. If it REJECTS → feed its findings back into the IMPLEMENT LOOP
+   (attempts keep counting). If it APPROVES → continue.
+
+5. REGRESSION: run full_suite_command on the branch. If it fails → treat as a
+   rejection: back to IMPLEMENT LOOP with the regression output (attempts count).
+
+6. DONE: stage ONLY this ticket's paths (`git add <this ticket's production file(s)>
+   .claude/tickets/<THIS-ticket>.md` — never `.` or a directory), commit, set
+   status: ready-for-merge. Then PUSH for review:
+   `git push -u origin <ticket.branch>` (never --force; only completed tickets).
+   Relay the "create merge request" URL the push prints — tell the user the MR
+   target should be the ticket's base_branch for a clean stacked diff (GitLab
+   auto-retargets it to the default branch when the base MR merges). If the push
+   fails (auth/network/protected branch), report it and continue — the ticket is
+   already done and committed locally. Do NOT merge. Report the ticket complete
+   (branch, changes, test results, MR URL). Move to the next ticket (off this one).
+```
+
+## Sub-agent prompts (templates)
+
+**Implementer** (spawn via the Agent tool, general-purpose):
+> You are implementing ONE ticket via TDD. Ticket: `<paste ticket>`. The tests are
+> already written and are the FIXED contract at `<test paths>` — you may NOT
+> create, edit, or delete any test file. Run `<test_command>`, then write/modify
+> PRODUCTION code only until every test passes. Do not stub or hard-code to fake a
+> pass. If a test appears genuinely wrong, STOP and explain why instead of editing
+> it. Previous attempt's failures: `<output or "none">`. Return: what you changed
+> and the final test output.
+
+**Reviewer** (spawn via the Agent tool; use a code-review agent type if available):
+> Adversarially review this diff against the ticket's acceptance criteria. Ticket:
+> `<paste>`. Diff: `<git diff base...branch>`. Verify: (a) every acceptance
+> criterion is genuinely met; (b) the tests are meaningful and were NOT weakened or
+> edited; (c) no hard-coding/stubbing that fakes passing tests; (d) no scope creep
+> or unrelated changes. Return a verdict `APPROVE` or `REJECT` with specific,
+> actionable findings.
+
+## Escalation & reporting
+
+- **On cap exhaustion or a blocked test-lock conflict:** set status `blocked`,
+  write the failure report into the ticket file, and ask the user how to proceed.
+  Do not silently continue to the next ticket if it depends on the blocked one.
+- **After each ticket:** brief status line (ticket id, ready-for-merge, branch,
+  test summary). **At the end:** the full stacked-branch chain for the user to
+  review/merge, and any blocked tickets.
+
+## Definition of done (per ticket)
+
+All of: (1) orchestrator's tests green (verified by you), (2) test files unchanged
+from what you authored, (3) reviewer APPROVES, (4) full regression green on the
+branch → status `ready-for-merge`, then **pushed to `origin`** for GUI review.
+Only the human merges (in the GitLab GUI).
+
+## What this skill does NOT do
+
+- No parallel tickets. No auto-merge to the base branch. No editing tests by the
+  implementer. No infinite loops. No non-coding tasks.
+
+## Resumability
+
+Ticket files carry `status` + `attempts`, so a re-invocation can resume: skip
+`ready-for-merge` tickets, continue `blocked`/in-progress ones from their branch.

@@ -721,7 +721,7 @@ Four structural root causes generate nearly every finding below:
    is unknowable at the row level.
 
 For the planned **read-only AI agent** (see `PERF_AUDIT.md`,
-`ARCHITECTURE.md`), the practical impact is: it cannot trust that a field's
+`ARCHITECTURE_AUDIT.md`), the practical impact is: it cannot trust that a field's
 emptiness means "not collected," cannot assume a canonical spelling for coded
 values, may see the same patient as multiple `pid`s, and may read long-resolved
 problems still flagged active. Every one of these needs handling in the

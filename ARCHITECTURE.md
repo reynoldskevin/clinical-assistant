@@ -187,6 +187,76 @@ duplicate-chart handling, and the demo-synthetic → production-real-PHI gap.
 
 ---
 
+## 1a. UI trigger, handoff & auth  (T07 / T08 / T16)
+
+How a turn (§1) is initiated from the OpenEMR UI. Resolves the five open design
+points; **user-initiated, coding-only, no core patch.**
+
+**Trigger surface.** M1: a **patient-summary card** injected into the chart via
+`Patient\Summary\Card\SectionEvent::addCard()` (context-gather / UC-1); its "Ask"
+panel hosts the multi-turn chat. JS/CSS loaded via `ScriptFilterEvent`. A
+persistent **navbar widget** (`UserInterface\PageHeadingRenderEvent::appendTitleNavContent()`)
+is a deferred fast-follow using the same handoff.
+
+**Interaction model.** **User-initiated only** — the clinician opens the card and
+either clicks "Summarize this patient" (UC-1) or types a question. **No proactive
+auto-run** on chart open (avoids un-asked-for PHI→LLM disclosures + surprise
+latency/cost). Proactive summarization is deferred.
+
+**Patient capture (server-side, authoritative).** The card renders server-side
+inside the chart, where the module already knows the active `pid` (session). It
+embeds `data-pid` + a CSRF token into the card DOM at render; the widget JS reads
+`data-pid` — **no client-side pid guessing.**
+
+**Token-mint endpoint (same-origin, session-authed).**
+`POST {webroot}/interface/modules/custom_modules/oe-module-ai-agent/token`:
+- Auth: the clinician's active OpenEMR **session cookie + CSRF** (`CsrfUtils`).
+- Server checks: the requesting user passes **ACL** for that patient **and** `pid`
+  == the session's active patient (can't mint for arbitrary pids).
+- Returns a short-lived (**TTL 5 min**) signed JWT — claims
+  `{ pid, principal:"agent:copilot", acting_user, scope:"read", exp, jti }` —
+  signed with a key shared with the sidecar + boundary [C]. This is the
+  `auth.scoped_token` in §1; one token serves both downstream hops.
+
+**Browser ↔ sidecar transport (direct streaming fetch; NOT a PHP proxy).**
+- The browser calls the sidecar **directly** via a streaming `fetch()`
+  (`POST /agent/turn`, `Authorization: Bearer <scoped_token>`, body = the §1
+  turn) and reads the chunked/SSE stream from the response — **not** `EventSource`
+  (so the token rides an Authorization header, not the URL).
+- Sidecar sets **CORS** to allow the OpenEMR origin.
+- **Rejected — a same-origin PHP proxy** in the module: a PHP-FPM endpoint holding
+  an open stream reintroduces the exact 60s-ceiling / output-buffering /
+  worker-pinning problems the sidecar exists to avoid (`PERF_AUDIT.md` §3). The
+  sidecar must be hit directly.
+
+**Auth chain (three hops):**
+1. browser → token endpoint — OpenEMR **session cookie + CSRF** (same-origin).
+2. browser → sidecar `/agent/turn` — **Bearer scoped_token** (CORS; minted in #1).
+3. sidecar → boundary [C] tools — the **same scoped_token**, validated per **T08**
+   (signature, `exp`, `pid`-scope), every call audited.
+
+**Sequence:**
+```
+Clinician clicks the card → clicks "Summarize" or types a question
+  → JS reads data-pid + CSRF from the card
+  → POST {module}/token          (session + CSRF)     → { scoped_token: pid, read, 5-min }
+  → fetch POST {sidecar}/agent/turn   (Bearer scoped_token, {conversation_id, patient_id, message})
+        sidecar: validate token → tool loop (calls [C] with token, audited) → verification gate
+        → streams cited tokens back → widget renders answer + citations (links to chart records)
+```
+
+**Security notes.** The scoped token is a **short-TTL, read-only, single-patient
+capability** — if leaked, blast radius is one patient's read data for ≤5 min
+(acceptable for the synthetic-data demo). **Real-PHI hardening (M4):** bind `aud`
+to the sidecar, add a one-time `jti`/nonce (or DPoP-style proof-of-possession),
+and keep the signing key in a secrets manager; the sidecar↔[C] calls remain the
+audited disclosure path.
+
+**Owning tickets:** T07 (card injection + JS load), T08 (token mint + boundary
+validation), T16 (widget + handoff + streaming-fetch render).
+
+---
+
 ## 2. Tool catalog (5.1)
 
 Six tools. Each traces to a use case; **no tool exists that a use case doesn't
