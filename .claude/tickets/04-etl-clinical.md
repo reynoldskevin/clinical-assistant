@@ -1,7 +1,7 @@
 ---
 id: 04
 title: ETL conditions/allergies/meds/immunizations → lists/prescriptions/immunizations
-status: tests-authored
+status: ready-for-merge
 depends_on: [03]
 branch: ticket/04-etl-clinical
 base_branch: ticket/03-etl-encounters
