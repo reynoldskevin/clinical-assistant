@@ -1,7 +1,7 @@
 ---
 id: 16
 title: UI chat widget + token handoff + render (first in-app)
-status: tests-authored
+status: ready-for-merge
 depends_on: [12, 08]
 branch: ticket/16-ui-widget
 base_branch: main

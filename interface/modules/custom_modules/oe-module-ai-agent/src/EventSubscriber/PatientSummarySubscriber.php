@@ -15,6 +15,7 @@ declare(strict_types=1);
 namespace OpenEMR\Modules\AiAgent\EventSubscriber;
 
 use OpenEMR\Events\Patient\Summary\Card\RenderEvent;
+use OpenEMR\Modules\AiAgent\Ui\AgentCardRenderable;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
 final class PatientSummarySubscriber implements EventSubscriberInterface
@@ -31,6 +32,13 @@ final class PatientSummarySubscriber implements EventSubscriberInterface
 
     public function onRenderPatientSummary(RenderEvent $event): void
     {
-        // Placeholder: the actual patient-summary card is added in T16.
+        // The pid in scope for the summary being rendered. The outer entry point
+        // (demographics.php) owns the superglobal; we read it once and cast.
+        $pid = (int) ($_SESSION['pid'] ?? 0);
+        if ($pid <= 0) {
+            return;
+        }
+
+        $event->addAppendedData(new AgentCardRenderable($pid));
     }
 }
