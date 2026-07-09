@@ -1,13 +1,13 @@
 ---
 id: 03
 title: ETL encounters → form_encounter + forms
-status: tests-authored
+status: ready-for-merge
 depends_on: [02]
 branch: ticket/03-etl-encounters
 base_branch: main
 test_command: "etl/.venv/bin/pytest -c etl/pytest.ini etl/tests/test_etl_encounters.py -q"
 full_suite_command: "etl/.venv/bin/pytest -c etl/pytest.ini etl -q"
-attempts: 0
+attempts: 2
 ---
 
 ## Description
