@@ -98,11 +98,15 @@
             return askSidecar(jwt, text);
         }).then(function (data) {
             answer.textContent = (data && data.answer) ? data.answer : 'No answer returned.';
+            // Clear the question but keep focus, ready for the next one.
+            question.value = '';
         }).catch(function () {
-            // Never surface internal error detail to the clinician.
+            // Never surface internal error detail to the clinician. Leave the
+            // question text in place so it can be retried.
             answer.textContent = 'The assistant is unavailable right now.';
         }).finally(function () {
             setBusy(false);
+            question.focus();
         });
     });
 })();
