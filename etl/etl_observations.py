@@ -187,7 +187,7 @@ def _load_labs(bundle, pid, cur):
                 report_id,
                 result_code,
                 result_text,
-                None if value is None else str(value),
+                "" if value is None else str(value),   # result is NOT NULL; qualitative labs have no valueQuantity
                 quantity.get("unit", ""),
                 date,
             ),

@@ -163,6 +163,27 @@ def test_load_observations_idempotent(db):
     assert cur.fetchone()[0] == 1
 
 
+def test_load_qualitative_lab_stores_empty_result(db):
+    # a qualitative lab (valueCodeableConcept, no valueQuantity) must not insert NULL
+    # into the NOT-NULL procedure_result.result column.
+    lab = {"resource": {
+        "resourceType": "Observation", "id": "l0000000-0000-0000-0000-00000000000f",
+        "status": "final",
+        "category": [{"coding": [{"code": "laboratory"}]}],
+        "code": {"coding": [{"system": "http://loinc.org", "code": "882-1", "display": "ABO group"}],
+                 "text": "ABO group"},
+        "subject": {"reference": f"urn:uuid:{P}"},
+        "effectiveDateTime": T_LAB,
+        "valueCodeableConcept": {"text": "O positive"},
+    }}
+    b = _bundle(lab)
+    load_patients([b], db)
+    assert load_observations([b], db)["labs"] == 1
+    cur = db.cursor()
+    cur.execute("SELECT result FROM procedure_result")
+    assert cur.fetchone()[0] == ""   # empty string, never NULL
+
+
 def test_load_observations_skips_when_patient_missing(db):
     b = _full()
     assert load_observations([b], db) == {"vitals": 0, "labs": 0}
