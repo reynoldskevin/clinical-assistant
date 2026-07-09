@@ -112,6 +112,18 @@
         var list = null;
         String(text).split('\n').forEach(function (line) {
             var trimmed = line.trim();
+            var heading = trimmed.match(/^#{1,6}\s+/);
+            if (heading) {
+                list = null;
+                var h = document.createElement('div');
+                h.className = 'oe-ai-agent-heading';
+                h.style.marginTop = '0.5em';
+                var hStrong = document.createElement('strong');
+                appendInline(hStrong, trimmed.slice(heading[0].length));
+                h.appendChild(hStrong);
+                answer.appendChild(h);
+                return;
+            }
             if (/^[-*]\s+/.test(trimmed)) {
                 if (!list) {
                     list = document.createElement('ul');
