@@ -1,7 +1,7 @@
 ---
 id: 15
 title: UC-1 eval cases — happy-path summary + missing-data (no fabrication)
-status: tests-authored
+status: ready-for-merge
 depends_on: [13]
 branch: ticket/15-uc1-evals
 base_branch: ticket/14-safety-evals
