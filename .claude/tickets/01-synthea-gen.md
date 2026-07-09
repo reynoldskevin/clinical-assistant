@@ -1,13 +1,13 @@
 ---
 id: 01
 title: Synthea cohort generation (Python, via Docker)
-status: tests-authored
+status: ready-for-merge
 depends_on: []
 branch: ticket/01-synthea-gen
 base_branch: main
 test_command: "etl/.venv/bin/pytest -c etl/pytest.ini etl/tests -q"
 full_suite_command: "etl/.venv/bin/pytest -c etl/pytest.ini etl -q"
-attempts: 0
+attempts: 2
 ---
 
 ## Description
