@@ -1,7 +1,7 @@
 ---
 id: 10
 title: Boundary audit logging — every read/denial recorded
-status: tests-authored
+status: ready-for-merge
 depends_on: [09]
 branch: ticket/10-boundary-audit
 base_branch: main
