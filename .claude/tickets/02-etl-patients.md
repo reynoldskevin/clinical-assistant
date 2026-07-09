@@ -1,13 +1,13 @@
 ---
 id: 02
 title: ETL patients → patient_data (+ uuid_registry)
-status: todo
+status: ready-for-merge
 depends_on: [01]
 branch: ticket/02-etl-patients
 base_branch: ticket/01-synthea-gen
 test_command: "etl/.venv/bin/pytest -c etl/pytest.ini etl/tests/test_etl_patients.py -q"
 full_suite_command: "etl/.venv/bin/pytest -c etl/pytest.ini etl -q"
-attempts: 0
+attempts: 1
 ---
 
 ## Description
