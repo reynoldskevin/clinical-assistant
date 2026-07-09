@@ -1,7 +1,7 @@
 ---
 id: 13
 title: Eval harness + YAML case format + graders
-status: tests-authored
+status: ready-for-merge
 depends_on: [12]
 branch: ticket/13-eval-harness
 base_branch: main
