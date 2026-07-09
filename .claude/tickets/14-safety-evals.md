@@ -1,7 +1,7 @@
 ---
 id: 14
 title: Safety eval cases — authz-extraction + prompt-injection
-status: tests-authored
+status: ready-for-merge
 depends_on: [13]
 branch: ticket/14-safety-evals
 base_branch: ticket/13-eval-harness

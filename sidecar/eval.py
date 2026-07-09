@@ -66,6 +66,11 @@ def _grade(grader: dict, text: str, trace: dict) -> str | None:
         if str(value).lower() in lower_text:
             return f"excludes: {value!r} unexpectedly found in output"
         return None
+    if key == "contains_any":
+        values = value if isinstance(value, list) else [value]
+        if not any(str(s).lower() in lower_text for s in values):
+            return f"contains_any: none of {values!r} found in output"
+        return None
     if key == "tool_used":
         if (tool_calls >= 1) != bool(value):
             return f"tool_used: expected {bool(value)} (tool_calls={tool_calls})"
