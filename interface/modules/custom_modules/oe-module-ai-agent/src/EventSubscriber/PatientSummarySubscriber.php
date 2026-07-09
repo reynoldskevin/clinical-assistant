@@ -14,6 +14,8 @@ declare(strict_types=1);
 
 namespace OpenEMR\Modules\AiAgent\EventSubscriber;
 
+use OpenEMR\Common\Csrf\CsrfUtils;
+use OpenEMR\Common\Session\SessionWrapperFactory;
 use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Events\Patient\Summary\Card\RenderEvent;
 use OpenEMR\Events\PatientDemographics\RenderEvent as DemographicsRenderEvent;
@@ -61,6 +63,11 @@ final class PatientSummarySubscriber implements EventSubscriberInterface
             return;
         }
 
-        echo AgentCard::render($pid, Config::sidecarUrl());
+        // Embed a session-bound CSRF token the widget sends back to token.php;
+        // the dashboard page does not expose one as a JS global.
+        $session = SessionWrapperFactory::getInstance()->getActiveSession();
+        $csrfToken = CsrfUtils::collectCsrfToken($session);
+
+        echo AgentCard::render($pid, Config::sidecarUrl(), $csrfToken);
     }
 }

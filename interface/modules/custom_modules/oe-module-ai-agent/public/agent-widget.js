@@ -38,8 +38,10 @@
     var tokenUrl = new URL('token.php', document.currentScript ? document.currentScript.src : window.location.href).href;
     var sidecarUrl = root.dataset.sidecarUrl || '/ai-agent-sidecar/ask';
 
-    // OpenEMR exposes the page CSRF token as a global (csrf_token_js).
-    var csrfToken = (typeof window.csrf_token_js !== 'undefined') ? window.csrf_token_js : '';
+    // The CSRF token is embedded server-side on the card (data-csrf); fall back
+    // to OpenEMR's page global (csrf_token_js) where one is present.
+    var csrfToken = root.dataset.csrf
+        || ((typeof window.csrf_token_js !== 'undefined') ? window.csrf_token_js : '');
 
     function setBusy(busy) {
         if (submit) {
@@ -84,6 +86,65 @@
         });
     }
 
+    // Append inline text to a node, bolding **...** spans. Model text only ever
+    // becomes text nodes / <strong> we create — it is never interpreted as HTML,
+    // so there is no XSS surface.
+    function appendInline(parent, text) {
+        var parts = String(text).split('**');
+        parts.forEach(function (part, i) {
+            if (part === '') {
+                return;
+            }
+            if (i % 2 === 1) {
+                var strong = document.createElement('strong');
+                strong.textContent = part;
+                parent.appendChild(strong);
+            } else {
+                parent.appendChild(document.createTextNode(part));
+            }
+        });
+    }
+
+    // Render a small, safe subset of Markdown: **bold** and '-'/'*' bullet lists.
+    // Consecutive bullet lines are grouped into a single <ul>.
+    function renderAnswer(text) {
+        answer.textContent = '';
+        var list = null;
+        String(text).split('\n').forEach(function (line) {
+            var trimmed = line.trim();
+            var heading = trimmed.match(/^#{1,6}\s+/);
+            if (heading) {
+                list = null;
+                var h = document.createElement('div');
+                h.className = 'oe-ai-agent-heading';
+                h.style.marginTop = '0.5em';
+                var hStrong = document.createElement('strong');
+                appendInline(hStrong, trimmed.slice(heading[0].length));
+                h.appendChild(hStrong);
+                answer.appendChild(h);
+                return;
+            }
+            if (/^[-*]\s+/.test(trimmed)) {
+                if (!list) {
+                    list = document.createElement('ul');
+                    list.className = 'oe-ai-agent-list';
+                    answer.appendChild(list);
+                }
+                var li = document.createElement('li');
+                appendInline(li, trimmed.replace(/^[-*]\s+/, ''));
+                list.appendChild(li);
+                return;
+            }
+            list = null;
+            if (trimmed === '') {
+                return;
+            }
+            var block = document.createElement('div');
+            appendInline(block, line);
+            answer.appendChild(block);
+        });
+    }
+
     form.addEventListener('submit', function (evt) {
         evt.preventDefault();
         var text = (question.value || '').trim();
@@ -95,12 +156,16 @@
         mintToken().then(function (jwt) {
             return askSidecar(jwt, text);
         }).then(function (data) {
-            answer.textContent = (data && data.answer) ? data.answer : 'No answer returned.';
+            renderAnswer((data && data.answer) ? data.answer : 'No answer returned.');
+            // Clear the question but keep focus, ready for the next one.
+            question.value = '';
         }).catch(function () {
-            // Never surface internal error detail to the clinician.
+            // Never surface internal error detail to the clinician. Leave the
+            // question text in place so it can be retried.
             answer.textContent = 'The assistant is unavailable right now.';
         }).finally(function () {
             setBusy(false);
+            question.focus();
         });
     });
 })();
