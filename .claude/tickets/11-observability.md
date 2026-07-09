@@ -1,7 +1,7 @@
 ---
 id: 11
 title: Observability spine — traces, tokens/cost, tool-failures
-status: tests-authored
+status: ready-for-merge
 depends_on: [12]
 branch: ticket/11-observability
 base_branch: ticket/12-sidecar
