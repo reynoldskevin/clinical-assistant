@@ -1,7 +1,7 @@
 ---
 id: 08
 title: Scoped-token mint/verify service (5-min pid-JWT, clock-injected)
-status: tests-authored
+status: ready-for-merge
 depends_on: [06]
 branch: ticket/08-scoped-token
 base_branch: ticket/06-agent-principal
