@@ -1,7 +1,7 @@
 ---
 id: 09b
 title: Boundary controller — verify scoped token before reading (cross-pid 403)
-status: tests-authored
+status: ready-for-merge
 depends_on: [09a, 08]
 branch: ticket/09b-boundary-controller
 base_branch: ticket/09a-patient-summary-service
