@@ -15,7 +15,7 @@ declare(strict_types=1);
 
 namespace OpenEMR\Modules\AiAgent\Service;
 
-final class PatientSummaryService
+final class PatientSummaryService implements PatientSummaryProviderInterface
 {
     public function __construct(
         private readonly \PDO $db,
