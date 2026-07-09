@@ -1,7 +1,7 @@
 ---
 id: 06
 title: Agent principal — typed read-only ClinicalPrincipal / PatientId
-status: tests-authored
+status: ready-for-merge
 depends_on: [07]
 branch: ticket/06-agent-principal
 base_branch: ticket/07-module-skeleton
