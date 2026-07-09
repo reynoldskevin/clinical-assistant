@@ -1,7 +1,7 @@
 ---
 id: 05
 title: ETL observations → form_vitals / procedure_result
-status: tests-authored
+status: ready-for-merge
 depends_on: [04]
 branch: ticket/05-etl-observations
 base_branch: ticket/04-etl-clinical
