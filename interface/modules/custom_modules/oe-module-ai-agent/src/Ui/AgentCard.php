@@ -21,12 +21,18 @@ namespace OpenEMR\Modules\AiAgent\Ui;
 
 final class AgentCard
 {
-    public static function render(int $pid): string
+    public static function render(int $pid, string $sidecarUrl = ''): string
     {
+        // The sidecar URL is optional; when provided it is escaped and emitted as
+        // a data attribute the front-end reads (falling back to its default path).
+        $sidecarAttr = $sidecarUrl !== ''
+            ? ' data-sidecar-url="' . htmlspecialchars($sidecarUrl, ENT_QUOTES) . '"'
+            : '';
+
         // $pid is a native int; emitting it directly means the attribute value can
         // only ever be an integer — no untrusted string ever reaches the markup.
         return <<<HTML
-<div id="oe-ai-agent" class="oe-ai-agent card mb-2" data-pid="{$pid}">
+<div id="oe-ai-agent" class="oe-ai-agent card mb-2" data-pid="{$pid}"{$sidecarAttr}>
     <div class="card-body">
         <h5 class="card-title oe-ai-agent-title">AI Clinical Co-Pilot</h5>
         <p class="oe-ai-agent-answer" role="status" aria-live="polite"></p>

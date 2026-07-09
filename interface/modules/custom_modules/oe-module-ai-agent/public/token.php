@@ -27,6 +27,7 @@ use OpenEMR\Common\Csrf\CsrfUtils;
 use OpenEMR\Common\Logging\SystemLogger;
 use OpenEMR\Common\Session\SessionWrapperFactory;
 use OpenEMR\Modules\AiAgent\Auth\TokenMinter;
+use OpenEMR\Modules\AiAgent\Support\Config;
 use Psr\Clock\ClockInterface;
 
 header('Content-Type: application/json');
@@ -61,7 +62,7 @@ if ($pid <= 0) {
 }
 
 // 4. Signing key from server configuration (never sent to the browser).
-$signingKey = (string) ($GLOBALS['oe_ai_agent_signing_key'] ?? '');
+$signingKey = Config::signingKey();
 if ($signingKey === '') {
     (new SystemLogger())->error('AI agent signing key is not configured');
     $fail(500, 'Service unavailable');

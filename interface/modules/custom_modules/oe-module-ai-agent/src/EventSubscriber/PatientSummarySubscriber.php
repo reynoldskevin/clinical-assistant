@@ -17,6 +17,7 @@ namespace OpenEMR\Modules\AiAgent\EventSubscriber;
 use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Events\Patient\Summary\Card\RenderEvent;
 use OpenEMR\Events\PatientDemographics\RenderEvent as DemographicsRenderEvent;
+use OpenEMR\Modules\AiAgent\Support\Config;
 use OpenEMR\Modules\AiAgent\Ui\AgentCard;
 use OpenEMR\Modules\AiAgent\Ui\AgentCardRenderable;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
@@ -60,6 +61,6 @@ final class PatientSummarySubscriber implements EventSubscriberInterface
             return;
         }
 
-        echo AgentCard::render($pid);
+        echo AgentCard::render($pid, Config::sidecarUrl());
     }
 }

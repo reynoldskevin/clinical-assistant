@@ -1,0 +1,26 @@
+<?php
+
+/**
+ * Template for config.local.php (which is gitignored and holds real secrets).
+ *
+ * Copy this file to config.local.php and fill in the values:
+ *
+ *   cp config.local.php.dist config.local.php
+ *
+ * - signing_key: shared HS256 key (>= 32 bytes) used to mint (token.php) and
+ *   verify (summary.php) the short-lived, patient-scoped JWT. Generate one with:
+ *       php -r "echo bin2hex(random_bytes(32)) . PHP_EOL;"
+ * - sidecar_url: absolute URL the browser posts questions to — the Python
+ *   sidecar's /ask endpoint, e.g. http://localhost:8900/ask
+ *
+ * Either value may instead be supplied via the environment variables
+ * OE_AI_AGENT_SIGNING_KEY / OE_AI_AGENT_SIDECAR_URL.
+ *
+ * @package OpenEMR
+ * @license https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
+ */
+
+return [
+    'signing_key' => '',
+    'sidecar_url' => '',
+];
