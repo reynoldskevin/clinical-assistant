@@ -1,7 +1,7 @@
 ---
 id: 07
 title: Module skeleton (oe-module-ai-agent, event-registered)
-status: tests-authored
+status: ready-for-merge
 depends_on: []
 branch: ticket/07-module-skeleton
 base_branch: main
