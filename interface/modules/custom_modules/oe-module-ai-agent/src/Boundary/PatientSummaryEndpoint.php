@@ -19,15 +19,22 @@ declare(strict_types=1);
 
 namespace OpenEMR\Modules\AiAgent\Boundary;
 
+use OpenEMR\Modules\AiAgent\Audit\BoundaryAuditLoggerInterface;
+use OpenEMR\Modules\AiAgent\Audit\NullBoundaryAuditLogger;
+use OpenEMR\Modules\AiAgent\Auth\InvalidScopedTokenException;
 use OpenEMR\Modules\AiAgent\Auth\ScopedTokenService;
 use OpenEMR\Modules\AiAgent\Service\PatientSummaryProviderInterface;
 
 final class PatientSummaryEndpoint
 {
+    private readonly BoundaryAuditLoggerInterface $audit;
+
     public function __construct(
         private readonly ScopedTokenService $tokens,
         private readonly PatientSummaryProviderInterface $summaries,
+        ?BoundaryAuditLoggerInterface $audit = null,
     ) {
+        $this->audit = $audit ?? new NullBoundaryAuditLogger();
     }
 
     /**
@@ -37,7 +44,15 @@ final class PatientSummaryEndpoint
     {
         // Verify first: throws InvalidScopedTokenException on any failure.
         // Only if verification succeeds do we read chart data (fail closed).
-        $this->tokens->verify($token, $requestedPid);
+        try {
+            $principal = $this->tokens->verify($token, $requestedPid);
+        } catch (InvalidScopedTokenException $e) {
+            // Record a generic reason — never leak the inner exception detail.
+            $this->audit->recordDenied($requestedPid, 'invalid or out-of-scope token');
+            throw $e;
+        }
+
+        $this->audit->recordGranted($principal);
 
         return $this->summaries->getSummary($requestedPid);
     }
