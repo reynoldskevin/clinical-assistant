@@ -1,7 +1,7 @@
 ---
 id: 09a
 title: PatientSummaryService — minimum-necessary chart summary (DB-backed)
-status: tests-authored
+status: ready-for-merge
 depends_on: [05, 08]
 branch: ticket/09a-patient-summary-service
 base_branch: main
