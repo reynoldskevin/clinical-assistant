@@ -35,6 +35,11 @@ final class AgentCard
             ? ' data-csrf="' . htmlspecialchars($csrfToken, ENT_QUOTES) . '"'
             : '';
 
+        // Cache-bust the widget script by its mtime so a changed agent-widget.js
+        // is always re-fetched rather than served stale from the browser cache.
+        $mtime = @filemtime(__DIR__ . '/../../public/agent-widget.js');
+        $version = (string) ($mtime !== false ? $mtime : '1');
+
         // $pid is a native int; emitting it directly means the attribute value can
         // only ever be an integer — no untrusted string ever reaches the markup.
         return <<<HTML
@@ -48,7 +53,7 @@ final class AgentCard
             <button type="submit" class="oe-ai-agent-submit btn btn-primary btn-sm mt-1">Ask</button>
         </form>
     </div>
-    <script src="../../../interface/modules/custom_modules/oe-module-ai-agent/public/agent-widget.js"></script>
+    <script src="../../../interface/modules/custom_modules/oe-module-ai-agent/public/agent-widget.js?v={$version}"></script>
 </div>
 HTML;
     }
