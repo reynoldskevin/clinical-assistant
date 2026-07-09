@@ -1,7 +1,7 @@
 ---
 id: 12
 title: Sidecar scaffold + Claude API single-tool loop (first turn)
-status: tests-authored
+status: ready-for-merge
 depends_on: [09]
 branch: ticket/12-sidecar
 base_branch: main
