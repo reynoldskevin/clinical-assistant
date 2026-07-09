@@ -1,0 +1,3 @@
+# Runtime dependency for the sidecar server (server.py / factory.py).
+# The agent, observability, and eval modules are pure-stdlib and need nothing here.
+anthropic>=0.40
