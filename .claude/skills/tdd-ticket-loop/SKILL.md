@@ -25,7 +25,11 @@ only**.
 5. **Orchestrator-controlled loop** — do not trust a sub-agent's claim that tests pass. After each implementer attempt, **run the tests yourself** and read the real output.
 6. **Reviewer gate** — after tests are green, spawn a separate reviewer sub-agent to verify the diff against the acceptance criteria and that the tests are meaningful (not gamed) and unchanged. Reviewer rejection feeds back into the loop.
 7. **Full regression after green** — once the ticket's own tests pass and the reviewer approves, run the FULL test suite on the branch (it includes accumulated stacked work). A regression halts the ticket for repair before it's marked done.
-8. **No merge — push for review instead.** When a ticket reaches ready-for-merge, `git push -u origin <branch>` and relay the "create merge request" URL the remote prints. The human reviews + merges in the GitLab GUI. Never merge to the base branch yourself. Push ONLY completed tickets (never WIP/blocked). A push failure is NOT a ticket failure — report it and continue. Never `--force`.
+8. **No merge — push AND open the MR for review instead.** When a ticket reaches ready-for-merge, push the branch **and create its merge request in the same push** using GitLab push options (see Step 6 for the exact command). The human reviews + merges in the GitLab GUI. Never merge to the base branch yourself. Push ONLY completed tickets (never WIP/blocked). A push/MR failure is NOT a ticket failure — report it and continue. Never `--force`.
+   - **MR title** = the subject line of the ticket's **feature commit** — the `feat(...)`/`fix(...)` implementation commit that begins the feature work — **NOT** the `test(...)` commit.
+   - **MR description** = the full contents of this ticket's `.claude/tickets/<NN-slug>.md` file.
+   - **MR target** = the ticket's `base_branch` (a clean stacked diff; GitLab auto-retargets to the default branch when the base MR merges).
+   - Push options only take effect on a push that updates a ref, so the completion push MUST be the branch's **first** push — do NOT `git push` the branch earlier in the loop. If the branch is somehow already on `origin` (or the remote rejects push options), fall back to relaying the printed "create merge request" URL so the human can open it.
 9. **No breakdown pause** — decompose and start immediately; do not wait for approval of the ticket list.
 10. **Iteration cap → escalate** — each ticket has a max-attempts budget (default **6**). On exhaustion, STOP that ticket, write a clear failure report (what failed, last test output, hypotheses), and ask the user how to proceed. Never loop indefinitely.
 11. **Commit hygiene — stage explicit paths only.** When committing a ticket, `git add` ONLY that ticket's own files: its production code, its test file(s), and its own `.claude/tickets/<this-ticket>.md`. NEVER `git add .` or a whole directory (e.g. `git add .claude/tickets`). Because Step 1 writes ALL ticket files up front, a directory add would commit *future* tickets' `.md` files (and any unrelated working-tree edits) onto this ticket's branch — exactly the leak to avoid.
@@ -112,15 +116,27 @@ For each ticket in dependency order:
    rejection: back to IMPLEMENT LOOP with the regression output (attempts count).
 
 6. DONE: stage ONLY this ticket's paths (`git add <this ticket's production file(s)>
-   .claude/tickets/<THIS-ticket>.md` — never `.` or a directory), commit, set
-   status: ready-for-merge. Then PUSH for review:
-   `git push -u origin <ticket.branch>` (never --force; only completed tickets).
-   Relay the "create merge request" URL the push prints — tell the user the MR
-   target should be the ticket's base_branch for a clean stacked diff (GitLab
-   auto-retargets it to the default branch when the base MR merges). If the push
-   fails (auth/network/protected branch), report it and continue — the ticket is
-   already done and committed locally. Do NOT merge. Report the ticket complete
-   (branch, changes, test results, MR URL). Move to the next ticket (off this one).
+   .claude/tickets/<THIS-ticket>.md` — never `.` or a directory), commit the feature
+   work with a `feat(...)`/`fix(...)` message, set status: ready-for-merge. Then PUSH
+   AND OPEN THE MR in one push, via GitLab push options (never --force; only completed
+   tickets; this must be the branch's FIRST push so the options take effect):
+
+     TITLE=$(git log --format=%s "origin/<base_branch>..HEAD" | grep -vE '^test\(' | tail -1)
+     git push -u origin <ticket.branch> \
+       -o merge_request.create \
+       -o merge_request.target="<base_branch>" \
+       -o "merge_request.title=$TITLE" \
+       -o "merge_request.description=$(cat .claude/tickets/<NN-slug>.md)"
+
+   TITLE resolves to the ticket's feature commit subject (the earliest non-`test(...)`
+   commit on the branch — the `feat/fix` that begins the feature), NOT the test commit.
+   The description is the ticket .md verbatim. GitLab creates the MR server-side over
+   SSH (no token/CLI needed) and prints its URL. If the push or MR-create fails
+   (branch already on origin so options don't fire, remote rejects push options,
+   auth/network/protected branch), report it and fall back to relaying the printed
+   "create merge request" URL — the ticket is already done and committed locally.
+   Do NOT merge. Report the ticket complete (branch, changes, test results, MR URL).
+   Move to the next ticket (off this one).
 ```
 
 ## Sub-agent prompts (templates)
@@ -155,8 +171,10 @@ For each ticket in dependency order:
 
 All of: (1) orchestrator's tests green (verified by you), (2) test files unchanged
 from what you authored, (3) reviewer APPROVES, (4) full regression green on the
-branch → status `ready-for-merge`, then **pushed to `origin`** for GUI review.
-Only the human merges (in the GitLab GUI).
+branch → status `ready-for-merge`, then **pushed to `origin` AND its merge request
+opened** (title = the feature commit subject, description = the ticket `.md`, target
+= `base_branch`) via the Step 6 push-options command. Only the human merges (in the
+GitLab GUI).
 
 ## What this skill does NOT do
 
