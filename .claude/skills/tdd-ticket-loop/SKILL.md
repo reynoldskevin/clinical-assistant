@@ -27,10 +27,11 @@ only**.
 7. **Full regression after green** — once the ticket's own tests pass and the reviewer approves, run the FULL test suite on the branch (it includes accumulated stacked work). A regression halts the ticket for repair before it's marked done.
 8. **No merge — push AND open the MR for review instead.** When a ticket reaches ready-for-merge, push the branch **and create its merge request in the same push** using GitLab push options (see Step 6 for the exact command). The human reviews + merges in the GitLab GUI. Never merge to the base branch yourself. Push ONLY completed tickets (never WIP/blocked). A push/MR failure is NOT a ticket failure — report it and continue. Never `--force`.
    - **MR title** = the subject line of the ticket's **feature commit** — the `feat(<id>)`/`fix(<id>)` implementation commit that begins the feature work — **NOT** the `test(<id>)` commit. The scope is the ticket NUMBER (e.g. `feat(17): …`), matching the `test(17): …` commit, so the MR title carries the ticket number for tracking.
-   - **MR description** = the full contents of this ticket's `.claude/tickets/<NN-slug>.md` file.
+   - **MR description** = this ticket's `.claude/tickets/<NN-slug>.md`, **FLATTENED to a single line** (YAML frontmatter stripped, all newlines collapsed to spaces). **git forbids newlines in push-option values** (`fatal: push options must not have new line characters`), so the description MUST be one line — markdown structure is lost but the full text is preserved. See Step 6 for the exact `awk`/`tr` flatten.
+   - **Do NOT delete the source branch on merge** — always pass `-o merge_request.remove_source_branch=false` so the MR's "Delete source branch" box is unchecked.
    - **MR target = `main`** — always. The human reviews and merges MRs in order against `main`; do NOT target another ticket's branch.
-   - **Stacked dependency → merge prerequisite.** When a ticket was stacked off an unmerged prior ticket (per #2), its MR MUST declare that the prior ticket's MR merges FIRST — prepend `**Depends on: !<prev-MR> — merge that before this.**` to the MR description so the order can't be violated. Until the prior merges, the MR diff will show the prior's commits too; it cleans up automatically once the prior is in `main` (rebase onto `main` then to tidy it).
-   - Push options only take effect on a push that updates a ref, so the completion push MUST be the branch's **first** push — do NOT `git push` the branch earlier in the loop. If the branch is somehow already on `origin` (or the remote rejects push options), fall back to relaying the printed "create merge request" URL so the human can open it.
+   - **Stacked dependency → merge prerequisite.** When a ticket was stacked off an unmerged prior ticket (per #2), its MR MUST declare that the prior ticket's MR merges FIRST — prepend `Depends on: !<prev-MR> — merge that before this.  ` (with a trailing space, NOT a newline) to the flattened description so the order can't be violated. Until the prior merges, the MR diff will show the prior's commits too; it cleans up automatically once the prior is in `main` (rebase onto `main` then to tidy it).
+   - Push options only take effect on a push that updates a ref, so the completion push MUST be the branch's **first** push — do NOT `git push` the branch earlier in the loop. If the branch is already on `origin` (so options can't fire on an up-to-date push) or the remote rejects push options, fall back to relaying the printed "create merge request" URL — do NOT force-push just to attach options.
 9. **No breakdown pause** — decompose and start immediately; do not wait for approval of the ticket list.
 10. **Iteration cap → escalate** — each ticket has a max-attempts budget (default **6**). On exhaustion, STOP that ticket, write a clear failure report (what failed, last test output, hypotheses), and ask the user how to proceed. Never loop indefinitely.
 11. **Commit hygiene — stage explicit paths only.** When committing a ticket, `git add` ONLY that ticket's own files: its production code, its test file(s), and its own `.claude/tickets/<this-ticket>.md`. NEVER `git add .` or a whole directory (e.g. `git add .claude/tickets`). Because Step 1 writes ALL ticket files up front, a directory add would commit *future* tickets' `.md` files (and any unrelated working-tree edits) onto this ticket's branch — exactly the leak to avoid.
@@ -129,22 +130,28 @@ For each ticket in dependency order:
    tickets; this must be the branch's FIRST push so the options take effect):
 
      TITLE=$(git log --format=%s "origin/main..HEAD" | grep -vE '^test\(' | tail -1)
+     # Flatten the ticket .md into ONE line: drop YAML frontmatter, collapse newlines
+     # to spaces (push options must not contain newlines).
+     DESC=$(awk 'BEGIN{fm=0} /^---$/{fm++; next} fm>=2{print}' .claude/tickets/<NN-slug>.md | tr '\n' ' ' | tr -s ' ')
+     # STACKED ticket only (decision #2): prepend the merge prerequisite (trailing spaces, no newline):
+     #   DESC="Depends on: !<prev-MR> — merge that before this.  $DESC"
      git push -u origin <ticket.branch> \
        -o merge_request.create \
        -o merge_request.target="main" \
        -o "merge_request.title=$TITLE" \
-       -o "merge_request.description=$(cat .claude/tickets/<NN-slug>.md)"
+       -o "merge_request.description=$DESC" \
+       -o merge_request.remove_source_branch=false
 
-   The MR ALWAYS targets `main`. TITLE resolves to the ticket's feature commit subject
-   (the earliest non-`test(...)` commit on the branch — the `feat/fix` that begins the
-   feature), NOT the test commit. The description is the ticket .md verbatim. If this
-   ticket was STACKED off an unmerged prior ticket (decision #2), FIRST prepend the
-   merge-prerequisite line to the description (see #8): compute
-   `DESC="**Depends on: !<prev-MR> — merge that before this.**"$'\n\n'"$(cat .claude/tickets/<NN-slug>.md)"`
-   and pass `-o "merge_request.description=$DESC"`. GitLab creates the MR server-side
-   over SSH (no token/CLI needed) and prints its URL. If the push or MR-create fails
-   (branch already on origin so options don't fire, remote rejects push options,
-   auth/network/protected branch), report it and fall back to relaying the printed
+   The MR ALWAYS targets `main`, keeps its source branch (`remove_source_branch=false`),
+   and its description is the FLATTENED ticket .md (single line — push options forbid
+   newlines). TITLE resolves to the ticket's feature commit subject (the earliest
+   non-`test(...)` commit — the `feat/fix` that begins the feature), NOT the test commit.
+   GitLab creates the MR server-side over SSH (no token/CLI needed) and prints its URL.
+   Because push options only fire on the branch's FIRST (ref-updating) push, get these
+   right the first time — you cannot re-fire them on an up-to-date branch, and you must
+   NOT force-push to attach them. If the push or MR-create fails (branch already on
+   origin, remote rejects push options, auth/network/protected branch), report it and
+   fall back to relaying the printed
    "create merge request" URL — the ticket is already done and committed locally.
    Do NOT merge. Report the ticket complete (branch, changes, test results, MR URL).
    Move to the next ticket — branch it off `main` (decision #2), stacking off this
@@ -184,9 +191,9 @@ For each ticket in dependency order:
 All of: (1) orchestrator's tests green (verified by you), (2) test files unchanged
 from what you authored, (3) reviewer APPROVES, (4) full regression green on the
 branch → status `ready-for-merge`, then **pushed to `origin` AND its merge request
-opened** (title = the feature commit subject, description = the ticket `.md`, target
-= `main`; a stacked ticket also declares its merge prerequisite) via the Step 6
-push-options command. Only the human merges (in the GitLab GUI).
+opened** (title = the feature commit subject, description = the FLATTENED ticket `.md`,
+target = `main`, `remove_source_branch=false`; a stacked ticket also declares its merge
+prerequisite) via the Step 6 push-options command. Only the human merges (in the GitLab GUI).
 
 ## What this skill does NOT do
 
