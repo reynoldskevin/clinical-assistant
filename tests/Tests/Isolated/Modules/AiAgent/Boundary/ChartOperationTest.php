@@ -31,9 +31,9 @@ final class ChartOperationTest extends TestCase
     {
         $values = array_map(static fn (ChartOperation $c): string => $c->value, ChartOperation::cases());
 
-        // Exactly these, no more: the boundary's whitelist (T19 adds get_medications).
+        // Exactly these, no more: the boundary's whitelist (T20 adds search_chart).
         $this->assertSame(
-            ['summary', 'list_encounters', 'get_encounter', 'get_results', 'get_medications'],
+            ['summary', 'list_encounters', 'get_encounter', 'get_results', 'get_medications', 'search_chart'],
             $values,
         );
     }
@@ -44,6 +44,7 @@ final class ChartOperationTest extends TestCase
         $this->assertSame(ChartOperation::ListEncounters, ChartOperation::from('list_encounters'));
         $this->assertSame(ChartOperation::GetEncounter, ChartOperation::from('get_encounter'));
         $this->assertSame(ChartOperation::GetResults, ChartOperation::from('get_results'));
+        $this->assertSame(ChartOperation::SearchChart, ChartOperation::from('search_chart'));
         $this->assertSame(ChartOperation::GetMedications, ChartOperation::from('get_medications'));
     }
 
