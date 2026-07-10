@@ -27,12 +27,12 @@ require_once __DIR__ . '/../../../../../../interface/modules/custom_modules/oe-m
 #[Group('isolated')]
 final class ChartOperationTest extends TestCase
 {
-    public function testExactlyTheThreeExpectedOperationsExist(): void
+    public function testExactlyTheExpectedOperationsExist(): void
     {
         $values = array_map(static fn (ChartOperation $c): string => $c->value, ChartOperation::cases());
 
-        // Exactly these three, no more: the boundary's whitelist.
-        $this->assertSame(['summary', 'list_encounters', 'get_encounter'], $values);
+        // Exactly these, no more: the boundary's whitelist (T18 adds get_results).
+        $this->assertSame(['summary', 'list_encounters', 'get_encounter', 'get_results'], $values);
     }
 
     public function testValidStringsParseToTheMatchingCase(): void
@@ -40,6 +40,7 @@ final class ChartOperationTest extends TestCase
         $this->assertSame(ChartOperation::Summary, ChartOperation::from('summary'));
         $this->assertSame(ChartOperation::ListEncounters, ChartOperation::from('list_encounters'));
         $this->assertSame(ChartOperation::GetEncounter, ChartOperation::from('get_encounter'));
+        $this->assertSame(ChartOperation::GetResults, ChartOperation::from('get_results'));
     }
 
     public function testUnknownStringIsRejected(): void

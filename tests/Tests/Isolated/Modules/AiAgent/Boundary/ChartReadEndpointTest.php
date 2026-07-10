@@ -84,6 +84,11 @@ final class ChartReadEndpointTest extends TestCase
                 $this->calls[] = ['get_encounter', $pid, $encounterId];
                 return ['encounter' => $encounterId, 'pid' => $pid];
             }
+            public function getResults(int $pid): array
+            {
+                $this->calls[] = ['get_results', $pid, 0];
+                return [['result_code' => '2339-0', 'pid' => $pid]];
+            }
         };
     }
 
@@ -134,9 +139,21 @@ final class ChartReadEndpointTest extends TestCase
         $this->assertSame([['get_encounter', 42, 88]], $provider->calls);
     }
 
+    public function testValidTokenDispatchesGetResults(): void
+    {
+        $tokens = new ScopedTokenService(self::KEY, $this->clock());
+        $provider = $this->provider();
+        $endpoint = new ChartReadEndpoint($tokens, $provider);
+
+        $result = $endpoint->handle($tokens->mint($this->principal()), 42, ChartOperation::GetResults);
+
+        $this->assertSame([['result_code' => '2339-0', 'pid' => 42]], $result);
+        $this->assertSame([['get_results', 42, 0]], $provider->calls);
+    }
+
     public function testCrossPidTokenIsDeniedAndNoDataIsReadForEveryOperation(): void
     {
-        foreach ([ChartOperation::Summary, ChartOperation::ListEncounters, ChartOperation::GetEncounter] as $op) {
+        foreach (ChartOperation::cases() as $op) {
             $tokens = new ScopedTokenService(self::KEY, $this->clock());
             $provider = $this->provider();
             $endpoint = new ChartReadEndpoint($tokens, $provider);
