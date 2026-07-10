@@ -1,0 +1,21 @@
+# UC-4 evals (T17) — encounter history
+#
+# These cases assert the agent answers an encounter/visit-history question by
+# actually reading the chart through the boundary (tool_used) and grounding the
+# answer in real encounter content, rather than producing a hollow reply. Graded
+# offline against an injected runner, so the graders check observable behaviour:
+# whether the boundary tool was used and whether the output names encounter
+# content.
+
+- name: uc4_encounter_history
+  question: "What is this patient's encounter and visit history?"
+  pid: 42
+  # A grounded answer must browse the encounters through the boundary
+  # (tool_used) and name real visit content. The first contains_any term
+  # ("visit") is a natural encounter word the test also uses as sample content.
+  graders:
+    - tool_used: true
+    - contains_any:
+        - "visit"
+        - "encounter"
+        - "follow-up"

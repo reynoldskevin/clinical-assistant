@@ -15,7 +15,7 @@ declare(strict_types=1);
 
 namespace OpenEMR\Modules\AiAgent\Service;
 
-final class PatientSummaryService implements PatientSummaryProviderInterface
+final class PatientSummaryService implements ChartReadProviderInterface
 {
     public function __construct(
         private readonly \PDO $db,
@@ -45,6 +45,40 @@ final class PatientSummaryService implements PatientSummaryProviderInterface
             'recent_vitals' => $this->recentVitals($pid),
             'recent_labs' => $this->recentLabs($pid),
         ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function listEncounters(int $pid): array
+    {
+        return $this->fetchList(
+            'SELECT encounter, date, reason, provider_id FROM form_encounter '
+            . 'WHERE pid = ? ORDER BY date DESC',
+            $pid
+        );
+    }
+
+    /**
+     * The pid scope is the security boundary: an encounter id belonging to a
+     * different patient yields no row (returns []), so a model-chosen id can
+     * never cross charts.
+     *
+     * @return array<string, mixed>
+     */
+    public function getEncounter(int $pid, int $encounterId): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT encounter, date, reason, provider_id, facility, encounter_type_description '
+            . 'FROM form_encounter WHERE pid = ? AND encounter = ?'
+        );
+        $stmt->bindValue(1, $pid, \PDO::PARAM_INT);
+        $stmt->bindValue(2, $encounterId, \PDO::PARAM_INT);
+        $stmt->execute();
+
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        return is_array($row) ? $row : [];
     }
 
     /**
