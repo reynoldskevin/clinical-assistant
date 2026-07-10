@@ -13,3 +13,12 @@
 # Pin to a digest for reproducible deploys if you want, e.g.:
 #   FROM openemr/openemr:flex@sha256:<digest>
 FROM openemr/openemr:flex
+
+# The stock flex entrypoint (openemr.sh) assumes the source repository is named
+# "openemr": it clones FLEX_REPOSITORY (whose dir defaults to the repo's name)
+# and then rsyncs a HARDCODED "openemr" directory into the webroot. This fork's
+# repo has a different name (agent-forge), so the stock script clones into
+# "agent-forge" and the rsync fails ("/openemr: No such file or directory").
+# Overlay this fork's openemr.sh, which clones into an explicit "openemr" dir.
+COPY docker/flex/openemr.sh /var/www/localhost/htdocs/openemr.sh
+RUN chmod 500 /var/www/localhost/htdocs/openemr.sh

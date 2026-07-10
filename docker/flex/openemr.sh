@@ -653,10 +653,12 @@ if [[ -f /var/www/localhost/htdocs/auto_configure.php ]] && [[ "${EMPTY}" != "ye
 
     if [[ "${FLEX_REPOSITORY_BRANCH}" != "" ]]; then
         echo "Collecting ${FLEX_REPOSITORY_BRANCH} branch from ${FLEX_REPOSITORY} repository"
-        git clone "${FLEX_REPOSITORY}" --branch "${FLEX_REPOSITORY_BRANCH}" --depth 1
+        # Clone into an explicit "openemr" dir so this works regardless of the
+        # repository's own name (the rsync below expects an "openemr" directory).
+        git clone --branch "${FLEX_REPOSITORY_BRANCH}" --depth 1 "${FLEX_REPOSITORY}" openemr
     else
         echo "Collecting ${FLEX_REPOSITORY_TAG} tag from ${FLEX_REPOSITORY} repository"
-        git clone "${FLEX_REPOSITORY}"
+        git clone "${FLEX_REPOSITORY}" openemr
         cd openemr
         git checkout "${FLEX_REPOSITORY_TAG}"
         cd ../
