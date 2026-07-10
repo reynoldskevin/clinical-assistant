@@ -94,6 +94,13 @@ final class ChartReadEndpointTest extends TestCase
                 $this->calls[] = ['get_medications', $pid, $activeOnly ? 1 : 0];
                 return [['drug' => 'Metformin', 'pid' => $pid]];
             }
+            public string $lastQuery = '';
+            public function searchChart(int $pid, string $query, int $limit): array
+            {
+                $this->lastQuery = $query;
+                $this->calls[] = ['search_chart', $pid, $limit];
+                return [['ref' => 'pnote:1', 'source_type' => 'note', 'pid' => $pid]];
+            }
         };
     }
 
@@ -183,6 +190,37 @@ final class ChartReadEndpointTest extends TestCase
         $endpoint->handle($tokens->mint($this->principal()), 42, ChartOperation::GetMedications);
 
         $this->assertSame([['get_medications', 42, 0]], $provider->calls);
+    }
+
+    public function testValidTokenDispatchesSearchChartWithQueryAndLimit(): void
+    {
+        $tokens = new ScopedTokenService(self::KEY, $this->clock());
+        $provider = $this->provider();
+        $endpoint = new ChartReadEndpoint($tokens, $provider);
+
+        $result = $endpoint->handle(
+            $tokens->mint($this->principal()),
+            42,
+            ChartOperation::SearchChart,
+            ['query' => 'chest pain', 'limit' => 5],
+        );
+
+        $this->assertSame([['ref' => 'pnote:1', 'source_type' => 'note', 'pid' => 42]], $result);
+        // pid from the token (42); query + limit from params.
+        $this->assertSame([['search_chart', 42, 5]], $provider->calls);
+        $this->assertSame('chest pain', $provider->lastQuery);
+    }
+
+    public function testSearchChartDefaultsLimitWhenAbsent(): void
+    {
+        $tokens = new ScopedTokenService(self::KEY, $this->clock());
+        $provider = $this->provider();
+        $endpoint = new ChartReadEndpoint($tokens, $provider);
+
+        $endpoint->handle($tokens->mint($this->principal()), 42, ChartOperation::SearchChart, ['query' => 'x']);
+
+        // Default limit is 20 when the model omits it.
+        $this->assertSame([['search_chart', 42, 20]], $provider->calls);
     }
 
     public function testCrossPidTokenIsDeniedAndNoDataIsReadForEveryOperation(): void

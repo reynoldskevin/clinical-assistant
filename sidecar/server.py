@@ -24,6 +24,7 @@ from factory import (
     build_medications_tool,
     build_message_creator,
     build_results_tool,
+    build_search_tool,
 )
 from observability import TraceCollector
 
@@ -99,7 +100,11 @@ def default_agent_builder(
             boundary,
             observer=TraceCollector(),
             extra_tools=build_encounter_tools(chart_boundary)
-            + [build_results_tool(chart_boundary), build_medications_tool(chart_boundary)],
+            + [
+                build_results_tool(chart_boundary),
+                build_medications_tool(chart_boundary),
+                build_search_tool(chart_boundary),
+            ],
         )
 
     return build

@@ -160,6 +160,63 @@ final class PatientSummaryService implements ChartReadProviderInterface
     }
 
     /**
+     * Free-text search over the patient's note sources (`pnotes` + `form_soap`),
+     * pid-scoped, returning snippet rows (never whole documents) most-recent-first
+     * and capped by $limit. The query is matched with a BOUND `LIKE '%…%'` (never
+     * interpolated) and each snippet is truncated to 300 chars in PHP after fetch
+     * (minimum-necessary). An empty/whitespace query returns [] — no search.
+     *
+     * @return list<array{ref: string, source_type: string, date: mixed, snippet: string}>
+     */
+    public function searchChart(int $pid, string $query, int $limit): array
+    {
+        if (trim($query) === '') {
+            return [];
+        }
+
+        // Clamp the row cap to a sane range before inlining it as an int LIMIT
+        // (same pattern as recentEncounters — an int cast, not a bound param).
+        $cap = max(0, min(50, $limit));
+        if ($cap === 0) {
+            return [];
+        }
+
+        $like = '%' . $query . '%';
+
+        $notes =
+            "SELECT CONCAT('pnote:', id) AS ref, 'note' AS source_type, date, "
+            . 'COALESCE(NULLIF(body, \'\'), title) AS snippet '
+            . 'FROM pnotes WHERE pid = ? AND (title LIKE ? OR body LIKE ?)';
+
+        $soap =
+            "SELECT CONCAT('soap:', id) AS ref, 'soap' AS source_type, date, "
+            . "CONCAT_WS(' ', subjective, objective, assessment, plan) AS snippet "
+            . 'FROM form_soap WHERE pid = ? '
+            . 'AND (subjective LIKE ? OR objective LIKE ? OR assessment LIKE ? OR plan LIKE ?)';
+
+        $sql = $notes . ' UNION ALL ' . $soap . ' ORDER BY date DESC LIMIT ' . $cap;
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindValue(1, $pid, \PDO::PARAM_INT);
+        $stmt->bindValue(2, $like, \PDO::PARAM_STR);
+        $stmt->bindValue(3, $like, \PDO::PARAM_STR);
+        $stmt->bindValue(4, $pid, \PDO::PARAM_INT);
+        $stmt->bindValue(5, $like, \PDO::PARAM_STR);
+        $stmt->bindValue(6, $like, \PDO::PARAM_STR);
+        $stmt->bindValue(7, $like, \PDO::PARAM_STR);
+        $stmt->bindValue(8, $like, \PDO::PARAM_STR);
+        $stmt->execute();
+
+        $rows = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+            $row['snippet'] = mb_substr((string) $row['snippet'], 0, 300);
+            $rows[] = $row;
+        }
+
+        return $rows;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function demographics(int $pid): array

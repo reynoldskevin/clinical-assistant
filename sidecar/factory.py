@@ -130,8 +130,8 @@ class ChartBoundary:
         parsed = json.loads(body)
         # read.php returns the provider result directly: an object for summary /
         # get_encounter, and a bare ARRAY for list_encounters / get_results /
-        # get_medications. Accept both — a JSON scalar (string/number/null) would be
-        # the unexpected case.
+        # get_medications / search_chart. Accept both — a JSON scalar
+        # (string/number/null) would be the unexpected case.
         if not isinstance(parsed, (dict, list)):
             raise ValueError("chart boundary returned an unexpected result type")
         return parsed
@@ -164,6 +164,12 @@ class ChartBoundary:
         result = self._post("get_medications", pid, {"active_only": active_only})
         if not isinstance(result, list):
             raise ValueError("get_medications result must be an array")
+        return result
+
+    def search_chart(self, pid: int, query: str, limit: int = 20) -> list[Any]:
+        result = self._post("search_chart", pid, {"query": query, "limit": limit})
+        if not isinstance(result, list):
+            raise ValueError("search_chart result must be an array")
         return result
 
 
@@ -275,4 +281,37 @@ def build_medications_tool(chart_boundary: ChartBoundary) -> dict[str, Any]:
             "additionalProperties": False,
         },
         "handler": lambda pid, inp: chart_boundary.get_medications(pid, bool(inp.get("active_only", False))),
+    }
+
+
+def build_search_tool(chart_boundary: ChartBoundary) -> dict[str, Any]:
+    """Turn a chart boundary into the free-text note-search ToolSpec.
+
+    A single ``{name, description, input_schema, handler(pid, tool_input)}`` dict.
+    The handler dispatches to the boundary with the fixed session pid; the model
+    must supply a ``query`` and may optionally supply a ``limit`` (default 20).
+    Results are snippet rows from the patient's notes — never whole documents —
+    so the model can quote grounded narrative content the structured tools omit.
+    """
+    return {
+        "name": "search_chart",
+        "description": (
+            "Full-text search over the current patient's free-text clinical "
+            "notes (progress notes and SOAP notes). Returns snippet rows — each "
+            "with a ref, source_type, date, and a short snippet of matching "
+            "text, never the whole document — most recent first. Use this for "
+            "narrative content the structured tools do not expose. Supply a "
+            "'query' to search for; 'limit' is optional (default 20). The "
+            "patient is fixed for this session."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "limit": {"type": "integer"},
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+        "handler": lambda pid, inp: chart_boundary.search_chart(pid, str(inp["query"]), int(inp.get("limit", 20))),
     }

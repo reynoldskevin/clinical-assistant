@@ -37,4 +37,12 @@ interface ChartReadProviderInterface extends PatientSummaryProviderInterface
      * @return list<array<string, mixed>>
      */
     public function getMedications(int $pid, bool $activeOnly): array;
+
+    /**
+     * Free-text search over the patient's note sources, returning snippet rows
+     * (never whole documents), most-recent-first, capped by $limit.
+     *
+     * @return list<array{ref: string, source_type: string, date: mixed, snippet: string}>
+     */
+    public function searchChart(int $pid, string $query, int $limit): array;
 }
