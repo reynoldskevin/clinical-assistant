@@ -17,7 +17,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 
 from agent import ClaudeAgent
-from factory import build_boundary, build_chart_boundary, build_encounter_tools, build_message_creator
+from factory import (
+    build_boundary,
+    build_chart_boundary,
+    build_encounter_tools,
+    build_message_creator,
+    build_results_tool,
+)
 from observability import TraceCollector
 
 # An agent-builder maps (pid, jwt) -> an object with .run(question, pid) -> str.
@@ -91,7 +97,7 @@ def default_agent_builder(
             message_creator,
             boundary,
             observer=TraceCollector(),
-            extra_tools=build_encounter_tools(chart_boundary),
+            extra_tools=build_encounter_tools(chart_boundary) + [build_results_tool(chart_boundary)],
         )
 
     return build

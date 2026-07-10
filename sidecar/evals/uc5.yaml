@@ -1,0 +1,21 @@
+# UC-5 evals (T18) — lab / diagnostic results
+#
+# These cases assert the agent answers a lab/diagnostic-results question by
+# actually reading the chart through the boundary (tool_used) and grounding the
+# answer in real results content, rather than producing a hollow reply. Graded
+# offline against an injected runner, so the graders check observable behaviour:
+# whether the boundary tool was used and whether the output names results
+# content.
+
+- name: uc5_lab_results
+  question: "What are this patient's most recent lab and diagnostic results?"
+  pid: 42
+  # A grounded answer must read the results through the boundary (tool_used) and
+  # name real results content. The first contains_any term ("glucose") is a
+  # natural results word the test also uses as sample content.
+  graders:
+    - tool_used: true
+    - contains_any:
+        - "glucose"
+        - "hba1c"
+        - "result"

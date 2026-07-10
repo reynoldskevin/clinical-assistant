@@ -65,6 +65,7 @@ final class ChartReadEndpoint
                 $requestedPid,
                 (int) ($params['encounter_id'] ?? 0),
             ),
+            ChartOperation::GetResults => $this->provider->getResults($requestedPid),
         };
     }
 }
