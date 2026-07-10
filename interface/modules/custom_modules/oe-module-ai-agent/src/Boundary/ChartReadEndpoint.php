@@ -70,6 +70,11 @@ final class ChartReadEndpoint
                 $requestedPid,
                 (bool) ($params['active_only'] ?? false),
             ),
+            ChartOperation::SearchChart => $this->provider->searchChart(
+                $requestedPid,
+                (string) ($params['query'] ?? ''),
+                (int) ($params['limit'] ?? 20),
+            ),
         };
     }
 }

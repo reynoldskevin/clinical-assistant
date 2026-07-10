@@ -1,7 +1,7 @@
 ---
 id: 020
 title: Tool — search_chart (free-text notes search, snippets-only) (+ eval case)
-status: tests-authored     # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
+status: ready-for-merge    # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
 depends_on: [019]
 branch: ticket/20-search-chart
 base_branch: ticket/19-get-medications   # STACKED off T19 (unmerged) — shares the enum/interface/factory; see skill decision #2

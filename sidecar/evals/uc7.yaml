@@ -1,0 +1,22 @@
+# UC-7 evals (T20) — search_chart (free-text note search, grounded content)
+#
+# This case asserts the agent answers a "what do the notes say about X?"
+# question by actually searching the patient's free-text notes through the
+# boundary (tool_used) AND grounds its answer in what those notes contain
+# rather than answering from general knowledge. Graded offline against an
+# injected runner, so the graders check observable behaviour: whether the
+# boundary tool was used and whether the output reflects grounded note content.
+
+- name: uc7_search_notes_for_mention
+  question: "Search this patient's notes for any mention of chest pain and tell me what they say."
+  pid: 1
+  # A grounded answer must search the notes through the boundary (tool_used) and
+  # report what they contain. The first contains_any term ("chest pain") is the
+  # phrase the test samples; the rest are honesty fallbacks for when the notes
+  # contain no such mention.
+  graders:
+    - tool_used: true
+    - contains_any:
+        - "chest pain"
+        - "no mention"
+        - "not found"
