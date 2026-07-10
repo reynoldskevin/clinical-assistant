@@ -86,9 +86,28 @@
         });
     }
 
-    // Append inline text to a node, bolding **...** spans. Model text only ever
-    // becomes text nodes / <strong> we create — it is never interpreted as HTML,
-    // so there is no XSS surface.
+    // Append text with single-'*' *italic* spans as <em>. Called for the non-bold
+    // segments by appendInline (bold '**' is consumed first, so only single
+    // asterisks remain here). Text-node / createElement only — never innerHTML.
+    function appendItalic(parent, text) {
+        var parts = String(text).split('*');
+        parts.forEach(function (part, i) {
+            if (part === '') {
+                return;
+            }
+            if (i % 2 === 1) {
+                var em = document.createElement('em');
+                em.textContent = part;
+                parent.appendChild(em);
+            } else {
+                parent.appendChild(document.createTextNode(part));
+            }
+        });
+    }
+
+    // Append inline text to a node, styling **bold** (<strong>) and *italic*
+    // (<em>) spans. Model text only ever becomes text nodes / <strong> / <em> we
+    // create — it is never interpreted as HTML, so there is no XSS surface.
     function appendInline(parent, text) {
         var parts = String(text).split('**');
         parts.forEach(function (part, i) {
@@ -100,7 +119,7 @@
                 strong.textContent = part;
                 parent.appendChild(strong);
             } else {
-                parent.appendChild(document.createTextNode(part));
+                appendItalic(parent, part);
             }
         });
     }
