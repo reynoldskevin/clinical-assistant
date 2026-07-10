@@ -146,8 +146,11 @@ def main() -> None:
         "http://localhost:8300/interface/modules/custom_modules/oe-module-ai-agent/public/summary.php",
     )
     allow_origin = os.environ.get("OE_AI_AGENT_ALLOW_ORIGIN", "*")
-    host = os.environ.get("OE_AI_AGENT_HOST", "127.0.0.1")
-    port = int(os.environ.get("OE_AI_AGENT_PORT", "8900"))
+    # On a platform that assigns a port (Railway sets $PORT), bind all interfaces
+    # on that port by default; locally, stay on loopback:8900.
+    default_host = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"
+    host = os.environ.get("OE_AI_AGENT_HOST", default_host)
+    port = int(os.environ.get("OE_AI_AGENT_PORT") or os.environ.get("PORT") or "8900")
 
     message_creator = build_message_creator(api_key)
     handler = make_handler(default_agent_builder(summary_url, message_creator), allow_origin)
