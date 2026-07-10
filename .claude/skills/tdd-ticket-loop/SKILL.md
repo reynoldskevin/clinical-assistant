@@ -26,7 +26,7 @@ only**.
 6. **Reviewer gate** — after tests are green, spawn a separate reviewer sub-agent to verify the diff against the acceptance criteria and that the tests are meaningful (not gamed) and unchanged. Reviewer rejection feeds back into the loop.
 7. **Full regression after green** — once the ticket's own tests pass and the reviewer approves, run the FULL test suite on the branch (it includes accumulated stacked work). A regression halts the ticket for repair before it's marked done.
 8. **No merge — push AND open the MR for review instead.** When a ticket reaches ready-for-merge, push the branch **and create its merge request in the same push** using GitLab push options (see Step 6 for the exact command). The human reviews + merges in the GitLab GUI. Never merge to the base branch yourself. Push ONLY completed tickets (never WIP/blocked). A push/MR failure is NOT a ticket failure — report it and continue. Never `--force`.
-   - **MR title** = the subject line of the ticket's **feature commit** — the `feat(...)`/`fix(...)` implementation commit that begins the feature work — **NOT** the `test(...)` commit.
+   - **MR title** = the subject line of the ticket's **feature commit** — the `feat(<id>)`/`fix(<id>)` implementation commit that begins the feature work — **NOT** the `test(<id>)` commit. The scope is the ticket NUMBER (e.g. `feat(17): …`), matching the `test(17): …` commit, so the MR title carries the ticket number for tracking.
    - **MR description** = the full contents of this ticket's `.claude/tickets/<NN-slug>.md` file.
    - **MR target = `main`** — always. The human reviews and merges MRs in order against `main`; do NOT target another ticket's branch.
    - **Stacked dependency → merge prerequisite.** When a ticket was stacked off an unmerged prior ticket (per #2), its MR MUST declare that the prior ticket's MR merges FIRST — prepend `**Depends on: !<prev-MR> — merge that before this.**` to the MR description so the order can't be violated. Until the prior merges, the MR diff will show the prior's commits too; it cleans up automatically once the prior is in `main` (rebase onto `main` then to tidy it).
@@ -122,7 +122,9 @@ For each ticket in dependency order:
 
 6. DONE: stage ONLY this ticket's paths (`git add <this ticket's production file(s)>
    .claude/tickets/<THIS-ticket>.md` — never `.` or a directory), commit the feature
-   work with a `feat(...)`/`fix(...)` message, set status: ready-for-merge. Then PUSH
+   work with a `feat(<id>):`/`fix(<id>):` message — the scope is the ticket NUMBER
+   (e.g. `feat(17): …`), the SAME scope as the `test(<id>):` commit, so it becomes the
+   MR title for ticket tracking. Set status: ready-for-merge. Then PUSH
    AND OPEN THE MR in one push, via GitLab push options (never --force; only completed
    tickets; this must be the branch's FIRST push so the options take effect):
 
