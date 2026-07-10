@@ -105,13 +105,90 @@
         });
     }
 
-    // Render a small, safe subset of Markdown: **bold** and '-'/'*' bullet lists.
-    // Consecutive bullet lines are grouped into a single <ul>.
+    // A markdown table row has at least one pipe plus some non-pipe content.
+    function isTableRow(s) {
+        return s.indexOf('|') !== -1 && s.replace(/\|/g, '').trim() !== '';
+    }
+
+    // A separator row is only dashes/colons and pipes, e.g. |---|:--:|.
+    function isTableSeparator(s) {
+        return /^\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?$/.test(s);
+    }
+
+    // Split a row into trimmed cell strings (outer pipes stripped).
+    function tableCells(s) {
+        return s.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(function (c) {
+            return c.trim();
+        });
+    }
+
+    // Build a <table> from markdown lines (header, separator, then data rows).
+    // Every cell goes through appendInline (bold-aware, text-node only) — never
+    // innerHTML — so there is no XSS surface.
+    function buildTable(lines) {
+        var table = document.createElement('table');
+        table.className = 'oe-ai-agent-table';
+        table.style.borderCollapse = 'collapse';
+        table.style.margin = '0.5em 0';
+
+        var headCells = tableCells(lines[0]);
+        var thead = document.createElement('thead');
+        var htr = document.createElement('tr');
+        headCells.forEach(function (c) {
+            var th = document.createElement('th');
+            th.style.border = '1px solid #b0b0b0';
+            th.style.padding = '2px 8px';
+            th.style.textAlign = 'left';
+            th.style.background = '#f2f2f2';
+            appendInline(th, c);
+            htr.appendChild(th);
+        });
+        thead.appendChild(htr);
+        table.appendChild(thead);
+
+        var tbody = document.createElement('tbody');
+        for (var r = 2; r < lines.length; r++) {
+            var cells = tableCells(lines[r]);
+            var tr = document.createElement('tr');
+            // Pad to the header width so ragged rows still render cleanly.
+            for (var c = 0; c < headCells.length; c++) {
+                var td = document.createElement('td');
+                td.style.border = '1px solid #d0d0d0';
+                td.style.padding = '2px 8px';
+                td.style.verticalAlign = 'top';
+                appendInline(td, cells[c] !== undefined ? cells[c] : '');
+                tr.appendChild(td);
+            }
+            tbody.appendChild(tr);
+        }
+        table.appendChild(tbody);
+        return table;
+    }
+
+    // Render a small, safe subset of Markdown: **bold**, '-'/'*' bullet lists,
+    // '#' headings, and pipe tables. Consecutive bullet lines group into one <ul>.
     function renderAnswer(text) {
         answer.textContent = '';
         var list = null;
-        String(text).split('\n').forEach(function (line) {
+        var lines = String(text).split('\n');
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
             var trimmed = line.trim();
+
+            // Table: a pipe header row immediately followed by a separator row.
+            if (isTableRow(trimmed) && i + 1 < lines.length && isTableSeparator(lines[i + 1].trim())) {
+                list = null;
+                var tableLines = [line, lines[i + 1]];
+                var j = i + 2;
+                while (j < lines.length && isTableRow(lines[j].trim())) {
+                    tableLines.push(lines[j]);
+                    j++;
+                }
+                answer.appendChild(buildTable(tableLines));
+                i = j - 1;
+                continue;
+            }
+
             var heading = trimmed.match(/^#{1,6}\s+/);
             if (heading) {
                 list = null;
@@ -122,7 +199,7 @@
                 appendInline(hStrong, trimmed.slice(heading[0].length));
                 h.appendChild(hStrong);
                 answer.appendChild(h);
-                return;
+                continue;
             }
             if (/^[-*]\s+/.test(trimmed)) {
                 if (!list) {
@@ -133,16 +210,16 @@
                 var li = document.createElement('li');
                 appendInline(li, trimmed.replace(/^[-*]\s+/, ''));
                 list.appendChild(li);
-                return;
+                continue;
             }
             list = null;
             if (trimmed === '') {
-                return;
+                continue;
             }
             var block = document.createElement('div');
             appendInline(block, line);
             answer.appendChild(block);
-        });
+        }
     }
 
     form.addEventListener('submit', function (evt) {
