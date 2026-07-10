@@ -66,6 +66,10 @@ final class ChartReadEndpoint
                 (int) ($params['encounter_id'] ?? 0),
             ),
             ChartOperation::GetResults => $this->provider->getResults($requestedPid),
+            ChartOperation::GetMedications => $this->provider->getMedications(
+                $requestedPid,
+                (bool) ($params['active_only'] ?? false),
+            ),
         };
     }
 }

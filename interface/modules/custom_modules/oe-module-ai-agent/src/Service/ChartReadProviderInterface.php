@@ -32,4 +32,9 @@ interface ChartReadProviderInterface extends PatientSummaryProviderInterface
      * @return list<array<string, mixed>>
      */
     public function getResults(int $pid): array;
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function getMedications(int $pid, bool $activeOnly): array;
 }

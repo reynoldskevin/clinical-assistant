@@ -21,6 +21,7 @@ from factory import (
     build_boundary,
     build_chart_boundary,
     build_encounter_tools,
+    build_medications_tool,
     build_message_creator,
     build_results_tool,
 )
@@ -97,7 +98,8 @@ def default_agent_builder(
             message_creator,
             boundary,
             observer=TraceCollector(),
-            extra_tools=build_encounter_tools(chart_boundary) + [build_results_tool(chart_boundary)],
+            extra_tools=build_encounter_tools(chart_boundary)
+            + [build_results_tool(chart_boundary), build_medications_tool(chart_boundary)],
         )
 
     return build

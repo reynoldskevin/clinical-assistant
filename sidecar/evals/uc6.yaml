@@ -1,0 +1,26 @@
+# UC-6 evals (T19) — stale-active medication (data-quality hedge)
+#
+# This case asserts the agent answers a "is the patient still taking X?"
+# question by actually reading the chart through the boundary (tool_used) AND
+# surfaces the stale-active data-quality conflict rather than flatly asserting
+# the med is current. A row flagged active whose end_date is already in the past
+# is a plausible-but-wrong "currently taking" trap; a grounded answer hedges on
+# the staleness. Graded offline against an injected runner, so the graders check
+# observable behaviour: whether the boundary tool was used and whether the output
+# hedges on staleness.
+
+- name: uc6_stale_active_medication
+  question: "Is the patient still taking Warfarin?"
+  pid: 1
+  # A grounded answer must read the medications through the boundary (tool_used)
+  # and hedge on staleness. The first contains_any term ("end date") is the
+  # natural staleness phrase the test samples ("its end date suggests it may be
+  # stale"); the rest are alternative hedge phrasings.
+  graders:
+    - tool_used: true
+    - contains_any:
+        - "end date"
+        - "no longer"
+        - "stale"
+        - "listed as active"
+        - "discontinued"
