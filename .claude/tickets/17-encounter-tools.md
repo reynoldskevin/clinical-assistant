@@ -1,14 +1,25 @@
 ---
 id: 017
 title: Tools — list_encounters + get_encounter (+ UC-4 eval case)
-status: tests-authored     # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
+status: ready-for-merge    # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
 depends_on: [009, 012]
 branch: ticket/17-encounter-tools
 base_branch: main          # M1 fully merged to main (ce7eff4); T17 branches off main
 test_command: "docker exec -w /var/www/localhost/htdocs/openemr development-easy-openemr-1 ./vendor/bin/phpunit -c phpunit-isolated.xml tests/Tests/Isolated/Modules/AiAgent  &&  etl/.venv/bin/pytest -c sidecar/pytest.ini sidecar/tests"
 full_suite_command: "docker exec -w /var/www/localhost/htdocs/openemr development-easy-openemr-1 ./vendor/bin/phpunit -c phpunit-isolated.xml tests/Tests/Isolated/Modules/AiAgent  &&  etl/.venv/bin/pytest -c sidecar/pytest.ini sidecar/tests"
-attempts: 0
+attempts: 1
 ---
+
+## Outcome (ready-for-merge)
+
+- Tests authored + locked: `b9eeac2`. Implementation: `f86e037`. Attempts: 1 (implementer
+  passed first try; reviewer APPROVED, no blocking findings).
+- Isolated PHP module suite **53/53**, full sidecar suite **47/47** (both verified by the
+  orchestrator, not the implementer's claim).
+- Regression: full isolated suite green apart from `RestControllers/…/BearerTokenAuthorizationStrategyTest`,
+  confirmed **pre-existing on clean main `ce7eff4`** (same 1 failure, 0 AiAgent references,
+  passes in isolation) — not a T17 regression.
+- Branch `ticket/17-encounter-tools` off `main`. NOT merged (human merges the chain).
 
 ## Description
 
