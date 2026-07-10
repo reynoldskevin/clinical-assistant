@@ -35,6 +35,10 @@ only**.
 9. **No breakdown pause** — decompose and start immediately; do not wait for approval of the ticket list.
 10. **Iteration cap → escalate** — each ticket has a max-attempts budget (default **6**). On exhaustion, STOP that ticket, write a clear failure report (what failed, last test output, hypotheses), and ask the user how to proceed. Never loop indefinitely.
 11. **Commit hygiene — stage explicit paths only.** When committing a ticket, `git add` ONLY that ticket's own files: its production code, its test file(s), and its own `.claude/tickets/<this-ticket>.md`. NEVER `git add .` or a whole directory (e.g. `git add .claude/tickets`). Because Step 1 writes ALL ticket files up front, a directory add would commit *future* tickets' `.md` files (and any unrelated working-tree edits) onto this ticket's branch — exactly the leak to avoid.
+12. **Contract-test every cross-component boundary.** When a ticket's change crosses a serialized wire between two components (e.g. a Python service ↔ a PHP HTTP endpoint over JSON, a queue, an RPC), unit tests that fake EACH side independently can BOTH pass while the two sides disagree on the actual payload shape — each fake is internally consistent but wrong about the other. *(This shipped a real bug: `read.php` returned a bare JSON array for `list_encounters`, but the sidecar's parser required an object; both sides' fakes matched their own side, so the mismatch passed CI and the tool failed 100% in production.)* So for ANY wire-crossing change, author at least one **contract test** that pins the EXACT serialized shape both sides must agree on:
+    - **Prefer a shared fixture** — one recorded real payload used by BOTH the producer test (assert it emits exactly this) AND the consumer test (assert it accepts exactly this), so changing one side's shape breaks the other side's test.
+    - **Or a real round-trip** where cheap — actually invoke the producer (real serializer/endpoint) and feed its output into the real consumer parser; no hand-written fake of the other side.
+    - **RED FLAG:** if the producer test and the consumer test each hand-roll their OWN fake of the other side with no shared fixture, you have ZERO contract coverage — the mismatch is invisible. Fix that before the ticket is done. When authoring the consumer's fake response, derive it from a REAL producer output (curl the endpoint / run the serializer once), not from your assumption of the shape.
 
 ## Config (defaults; confirm/override from the user's request)
 
@@ -174,8 +178,11 @@ For each ticket in dependency order:
 > `<paste>`. Diff: `<git diff base...branch>`. Verify: (a) every acceptance
 > criterion is genuinely met; (b) the tests are meaningful and were NOT weakened or
 > edited; (c) no hard-coding/stubbing that fakes passing tests; (d) no scope creep
-> or unrelated changes. Return a verdict `APPROVE` or `REJECT` with specific,
-> actionable findings.
+> or unrelated changes; (e) **if the change crosses a component boundary (a
+> serialized wire between two components), a contract test pins the REAL payload
+> shape both sides agree on — NOT just an independent fake on each side whose
+> assumed shapes could disagree (see decision #12).** Return a verdict `APPROVE` or
+> `REJECT` with specific, actionable findings.
 
 ## Escalation & reporting
 
