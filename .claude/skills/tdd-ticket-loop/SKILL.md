@@ -19,7 +19,7 @@ only**.
 ## Locked design decisions (do not deviate without asking the user)
 
 1. **Sequential** — one ticket at a time, in dependency order. Never run tickets in parallel.
-2. **Stacked branches** — ticket 1 branches off the base branch; each later ticket branches off the **previous ticket's branch**, so dependent work sees prior code. Never auto-merge into the base branch.
+2. **Branch off `main` by default; stack only when a dependency forces it.** Create each new ticket's branch off the latest `main` — the human reviews and merges MRs in order against `main`, so an off-`main` branch gives a clean diff. **Exception (stacking):** when a ticket needs code from a prior ticket that has NOT yet merged to `main` (its tests can't even build without it), branch it off that prior ticket's branch instead. As soon as the prior ticket merges, rebase the stacked branch onto `main` so it becomes a clean off-`main` branch. Never auto-merge into `main`. (Stacking implies a merge-order requirement — see #8.)
 3. **Orchestrator authors the tests** — YOU write each ticket's tests (unit + end-to-end as appropriate) from its acceptance criteria, and commit them, BEFORE any implementation. Tests are the contract.
 4. **Tests are locked** — the implementer sub-agent may NOT create/edit/delete test files. It writes production code to make the tests pass. If it believes a test is genuinely wrong, it must STOP and report that to you; you decide (fix the test yourself or escalate to the user). After every implementer run, verify the test files are unchanged (`git diff` on test paths); if changed, revert them and re-dispatch with a warning (counts toward the cap).
 5. **Orchestrator-controlled loop** — do not trust a sub-agent's claim that tests pass. After each implementer attempt, **run the tests yourself** and read the real output.
@@ -28,7 +28,8 @@ only**.
 8. **No merge — push AND open the MR for review instead.** When a ticket reaches ready-for-merge, push the branch **and create its merge request in the same push** using GitLab push options (see Step 6 for the exact command). The human reviews + merges in the GitLab GUI. Never merge to the base branch yourself. Push ONLY completed tickets (never WIP/blocked). A push/MR failure is NOT a ticket failure — report it and continue. Never `--force`.
    - **MR title** = the subject line of the ticket's **feature commit** — the `feat(...)`/`fix(...)` implementation commit that begins the feature work — **NOT** the `test(...)` commit.
    - **MR description** = the full contents of this ticket's `.claude/tickets/<NN-slug>.md` file.
-   - **MR target** = the ticket's `base_branch` (a clean stacked diff; GitLab auto-retargets to the default branch when the base MR merges).
+   - **MR target = `main`** — always. The human reviews and merges MRs in order against `main`; do NOT target another ticket's branch.
+   - **Stacked dependency → merge prerequisite.** When a ticket was stacked off an unmerged prior ticket (per #2), its MR MUST declare that the prior ticket's MR merges FIRST — prepend `**Depends on: !<prev-MR> — merge that before this.**` to the MR description so the order can't be violated. Until the prior merges, the MR diff will show the prior's commits too; it cleans up automatically once the prior is in `main` (rebase onto `main` then to tidy it).
    - Push options only take effect on a push that updates a ref, so the completion push MUST be the branch's **first** push — do NOT `git push` the branch earlier in the loop. If the branch is somehow already on `origin` (or the remote rejects push options), fall back to relaying the printed "create merge request" URL so the human can open it.
 9. **No breakdown pause** — decompose and start immediately; do not wait for approval of the ticket list.
 10. **Iteration cap → escalate** — each ticket has a max-attempts budget (default **6**). On exhaustion, STOP that ticket, write a clear failure report (what failed, last test output, hypotheses), and ask the user how to proceed. Never loop indefinitely.
@@ -60,7 +61,7 @@ title: get_patient_summary boundary endpoint
 status: todo            # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
 depends_on: [001, 002]
 branch: ticket/003-get-patient-summary
-base_branch: ticket/002-...    # previous ticket's branch (stacked)
+base_branch: main             # main by default; the previous ticket's branch ONLY if this ticket needs its not-yet-merged code (stacked — see decision #2)
 test_command: "openemr-cmd ut -- --filter PatientSummary"
 full_suite_command: "openemr-cmd cst"
 attempts: 0
@@ -86,8 +87,12 @@ executing immediately (no approval pause).
 For each ticket in dependency order:
 
 ```
-1. BRANCH: git checkout <base_branch for this ticket>; git checkout -b <ticket.branch>
-   (ticket 1's base = BASE_BRANCH; ticket N's base = ticket N-1's branch)
+1. BRANCH (off `main` by default — see decision #2): git checkout main; git pull;
+   git checkout -b <ticket.branch>. STACK instead (base = the prior ticket's branch)
+   ONLY when this ticket needs a prior ticket's code that has NOT yet merged to `main`
+   — without it the tests can't build. If the prior ticket is already merged to `main`,
+   branch off `main` (a `git pull` first picks up that merged code). Record the actual
+   base in the ticket's `base_branch`.
 
 2. AUTHOR TESTS (you, the orchestrator): write the unit + e2e tests from the
    acceptance criteria. Run them → confirm they FAIL for the right reason (red).
@@ -121,22 +126,27 @@ For each ticket in dependency order:
    AND OPEN THE MR in one push, via GitLab push options (never --force; only completed
    tickets; this must be the branch's FIRST push so the options take effect):
 
-     TITLE=$(git log --format=%s "origin/<base_branch>..HEAD" | grep -vE '^test\(' | tail -1)
+     TITLE=$(git log --format=%s "origin/main..HEAD" | grep -vE '^test\(' | tail -1)
      git push -u origin <ticket.branch> \
        -o merge_request.create \
-       -o merge_request.target="<base_branch>" \
+       -o merge_request.target="main" \
        -o "merge_request.title=$TITLE" \
        -o "merge_request.description=$(cat .claude/tickets/<NN-slug>.md)"
 
-   TITLE resolves to the ticket's feature commit subject (the earliest non-`test(...)`
-   commit on the branch — the `feat/fix` that begins the feature), NOT the test commit.
-   The description is the ticket .md verbatim. GitLab creates the MR server-side over
-   SSH (no token/CLI needed) and prints its URL. If the push or MR-create fails
+   The MR ALWAYS targets `main`. TITLE resolves to the ticket's feature commit subject
+   (the earliest non-`test(...)` commit on the branch — the `feat/fix` that begins the
+   feature), NOT the test commit. The description is the ticket .md verbatim. If this
+   ticket was STACKED off an unmerged prior ticket (decision #2), FIRST prepend the
+   merge-prerequisite line to the description (see #8): compute
+   `DESC="**Depends on: !<prev-MR> — merge that before this.**"$'\n\n'"$(cat .claude/tickets/<NN-slug>.md)"`
+   and pass `-o "merge_request.description=$DESC"`. GitLab creates the MR server-side
+   over SSH (no token/CLI needed) and prints its URL. If the push or MR-create fails
    (branch already on origin so options don't fire, remote rejects push options,
    auth/network/protected branch), report it and fall back to relaying the printed
    "create merge request" URL — the ticket is already done and committed locally.
    Do NOT merge. Report the ticket complete (branch, changes, test results, MR URL).
-   Move to the next ticket (off this one).
+   Move to the next ticket — branch it off `main` (decision #2), stacking off this
+   one ONLY if it needs this ticket's code before this ticket's MR has merged.
 ```
 
 ## Sub-agent prompts (templates)
@@ -173,8 +183,8 @@ All of: (1) orchestrator's tests green (verified by you), (2) test files unchang
 from what you authored, (3) reviewer APPROVES, (4) full regression green on the
 branch → status `ready-for-merge`, then **pushed to `origin` AND its merge request
 opened** (title = the feature commit subject, description = the ticket `.md`, target
-= `base_branch`) via the Step 6 push-options command. Only the human merges (in the
-GitLab GUI).
+= `main`; a stacked ticket also declares its merge prerequisite) via the Step 6
+push-options command. Only the human merges (in the GitLab GUI).
 
 ## What this skill does NOT do
 
