@@ -114,9 +114,14 @@ final class PatientSummaryService implements ChartReadProviderInterface
      */
     public function getMedications(int $pid, bool $activeOnly): array
     {
+        // stale-active = an active row whose end date is a real date already in the
+        // past. A date column may be NULL, a zero date, or (from some imports) an
+        // empty string; compare it to CURDATE() with a lower floor rather than using
+        // a '' / '0000-00-00' literal or DATE(): those coerce '' to a date and MySQL
+        // in strict mode (unlike MariaDB) errors "Incorrect DATE value: ''". NULL,
+        // zero dates and '' all fall below the '1000-01-01' floor, so are never flagged.
         $staleConflict = static fn (string $active, string $end): string =>
-            "({$active} = 1 AND {$end} IS NOT NULL AND {$end} <> '' "
-            . "AND {$end} <> '0000-00-00' AND DATE({$end}) < CURDATE())";
+            "({$active} = 1 AND {$end} > '1000-01-01' AND {$end} < CURDATE())";
 
         $prescriptions =
             'SELECT '
