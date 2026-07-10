@@ -133,7 +133,12 @@ For each ticket in dependency order:
    AND OPEN THE MR in one push, via GitLab push options (never --force; only completed
    tickets; this must be the branch's FIRST push so the options take effect):
 
-     TITLE=$(git log --format=%s "origin/main..HEAD" | grep -vE '^test\(' | tail -1)
+     # TITLE = this ticket's feature commit subject. The range base is the ticket's
+     # base_branch (its Step-2 branch point), NOT hardcoded origin/main — for a STACKED
+     # ticket, `origin/main..HEAD` also contains the PARENT ticket's feat commit and
+     # `tail -1` would wrongly pick IT. Use base_branch: main for a normal ticket, or the
+     # parent's branch (e.g. ticket/19-...) for a stacked one.
+     TITLE=$(git log --format=%s "<base_branch>..HEAD" | grep -vE '^test\(' | tail -1)
      # Extract ONLY the ticket's "## Description" section and flatten it to ONE line
      # (push options must not contain newlines).
      DESC=$(awk '/^## Description$/{f=1;next} /^## /{f=0} f' .claude/tickets/<NN-slug>.md | tr '\n' ' ' | sed 's/  */ /g; s/^ //; s/ $//')
@@ -148,8 +153,9 @@ For each ticket in dependency order:
 
    The MR ALWAYS targets `main`, keeps its source branch (`remove_source_branch=false`),
    and its description is the FLATTENED `## Description` section only (single line — push
-   options forbid newlines). TITLE resolves to the ticket's feature commit subject (the earliest
-   non-`test(...)` commit — the `feat/fix` that begins the feature), NOT the test commit.
+   options forbid newlines). TITLE resolves to the ticket's feature commit subject — the
+   earliest non-`test(...)` commit SINCE THE TICKET'S OWN base_branch (the `feat/fix` that
+   begins THIS ticket), NOT the test commit and NOT a stacked parent's feat commit.
    GitLab creates the MR server-side over SSH (no token/CLI needed) and prints its URL.
    Because push options only fire on the branch's FIRST (ref-updating) push, get these
    right the first time — you cannot re-fire them on an up-to-date branch, and you must
