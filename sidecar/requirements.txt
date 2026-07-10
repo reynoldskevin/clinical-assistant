@@ -1,3 +1,5 @@
-# Runtime dependency for the sidecar server (server.py / factory.py).
+# Runtime dependencies for the sidecar server (server.py / factory.py).
 # The agent, observability, and eval modules are pure-stdlib and need nothing here.
 anthropic>=0.40
+# Optional LLM observability: only used when BRAINTRUST_API_KEY is set.
+braintrust>=0.0.170

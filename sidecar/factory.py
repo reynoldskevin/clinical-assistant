@@ -8,6 +8,7 @@ can be exercised in tests without a live API call or a running OpenEMR.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import urllib.request
 from typing import Any, Callable
@@ -33,6 +34,18 @@ def build_message_creator(
         client = anthropic.Anthropic(
             api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"),
         )
+
+        # Optional Braintrust observability: when a key is configured, wrap the
+        # client so every Claude call is auto-logged (inputs, outputs, tokens,
+        # cost, latency). Guarded so observability can never break the agent path.
+        if os.environ.get("BRAINTRUST_API_KEY"):
+            try:
+                from braintrust import init_logger, wrap_anthropic
+
+                init_logger(project=os.environ.get("BRAINTRUST_PROJECT", "oe-ai-agent"))
+                client = wrap_anthropic(client)
+            except Exception:  # noqa: BLE001 - never let telemetry wiring fail the request path
+                logging.getLogger("sidecar").exception("Braintrust init failed; continuing without it")
 
     def create(**kwargs: Any) -> Any:
         kwargs.setdefault("model", model)
