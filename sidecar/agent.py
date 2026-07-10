@@ -52,6 +52,11 @@ class ClaudeAgent:
         self._max_tokens = max_tokens
         self._observer = observer or NullObserver()
 
+    @property
+    def observer(self) -> Any:
+        """The observability collector for this run (token usage, cost, tool calls)."""
+        return self._observer
+
     def _tools(self) -> list[dict[str, Any]]:
         return [
             {

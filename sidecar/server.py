@@ -11,6 +11,7 @@ no sockets) and a thin ``BaseHTTPRequestHandler`` that adapts it to HTTP.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
@@ -56,7 +57,15 @@ def process_ask(
         answer = agent.run(question, pid)
     except Exception:
         # Never leak internal detail (API errors, boundary failures) to the browser.
+        logging.getLogger("sidecar").exception("agent turn failed", extra={"pid": pid})
         return 502, {"error": "the assistant is unavailable"}
+
+    # Emit the turn's observability trace (tokens, cost, tool calls). Guarded so
+    # non-instrumented agents (e.g. test fakes) don't error.
+    observer = getattr(agent, "observer", None)
+    summarize = getattr(observer, "summary", None)
+    if callable(summarize):
+        logging.getLogger("sidecar").info("agent turn: pid=%s trace=%s", pid, json.dumps(summarize()))
 
     return 200, {"answer": answer}
 
@@ -135,6 +144,7 @@ def load_env_file(path: str) -> None:
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     load_env_file(os.path.join(os.path.dirname(__file__), ".env"))
 
     api_key = os.environ.get("ANTHROPIC_API_KEY")
