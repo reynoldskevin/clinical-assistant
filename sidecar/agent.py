@@ -25,6 +25,11 @@ MessageCreator = Callable[..., MessageResponse]
 # Callable signature: boundary(pid) -> dict (the patient summary).
 Boundary = Callable[[int], dict[str, Any]]
 
+# An extra tool spec: {name, description, input_schema, handler}, where
+# handler(pid, tool_input) -> dict. The session pid is fixed (from the token);
+# the model's tool_input is passed through but can never redirect the pid.
+ToolSpec = dict[str, Any]
+
 _MAX_ITERATIONS = 8
 
 _SYSTEM_PROMPT = (
@@ -45,12 +50,15 @@ class ClaudeAgent:
         model: str = "claude-opus-4-8",
         max_tokens: int = 4096,
         observer: Any = None,
+        extra_tools: list[ToolSpec] | None = None,
     ) -> None:
         self._message_creator = message_creator
         self._boundary = boundary
         self._model = model
         self._max_tokens = max_tokens
         self._observer = observer or NullObserver()
+        # Injectable tool registry keyed by name, each carrying its handler.
+        self._extra_tools = list(extra_tools or [])
 
     @property
     def observer(self) -> Any:
@@ -73,7 +81,22 @@ class ClaudeAgent:
                     "additionalProperties": False,
                 },
             },
+            *(
+                {
+                    "name": spec["name"],
+                    "description": spec["description"],
+                    "input_schema": spec["input_schema"],
+                }
+                for spec in self._extra_tools
+            ),
         ]
+
+    def _handler_for(self, name: str) -> Callable[[int, dict[str, Any]], dict[str, Any]] | None:
+        """Return the injected handler for ``name``, or None if not registered."""
+        for spec in self._extra_tools:
+            if spec["name"] == name:
+                return spec["handler"]
+        return None
 
     def run(self, question: str, pid: int) -> str:
         """Answer ``question`` about patient ``pid`` via the tool-use loop."""
@@ -134,6 +157,31 @@ class ClaudeAgent:
                                 "type": "tool_result",
                                 "tool_use_id": block.id,
                                 "content": json.dumps(summary),
+                            }
+                        )
+                elif (handler := self._handler_for(block.name)) is not None:
+                    # An injected chart tool. The session pid is fixed; the model
+                    # supplies only tool_input. Failures become a tool error, not
+                    # a crash — mirroring the summary error path above.
+                    try:
+                        result = handler(pid, block.input)
+                    except Exception:
+                        self._observer.record_tool_call(block.name, False)
+                        tool_results.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": block.id,
+                                "is_error": True,
+                                "content": f"Failed to run tool: {block.name}",
+                            }
+                        )
+                    else:
+                        self._observer.record_tool_call(block.name, True)
+                        tool_results.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": block.id,
+                                "content": json.dumps(result),
                             }
                         )
                 else:

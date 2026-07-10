@@ -89,3 +89,110 @@ def build_boundary(
         return parsed
 
     return boundary
+
+
+class ChartBoundary:
+    """Operation-dispatched HTTP chart boundary.
+
+    Each method POSTs ``{op, pid, params}`` to read.php with the forwarded Bearer
+    JWT; the OpenEMR boundary verifies it (pid scope, audience, expiry) before
+    returning any chart data. A non-2xx response makes ``opener`` raise, which
+    the agent surfaces to the model as a tool error rather than crashing the loop.
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        jwt: str,
+        *,
+        opener: Callable[..., Any],
+        timeout: float,
+    ) -> None:
+        self._base_url = base_url
+        self._jwt = jwt
+        self._opener = opener
+        self._timeout = timeout
+
+    def _post(self, op: str, pid: int, params: dict[str, Any]) -> dict[str, Any]:
+        payload = json.dumps({"op": op, "pid": pid, "params": params}).encode("utf-8")
+        request = urllib.request.Request(
+            self._base_url,
+            data=payload,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self._jwt}",
+            },
+        )
+        with self._opener(request, timeout=self._timeout) as response:
+            body = response.read()
+
+        parsed = json.loads(body)
+        if not isinstance(parsed, dict):
+            raise ValueError("chart boundary returned a non-object result")
+        return parsed
+
+    def summary(self, pid: int) -> dict[str, Any]:
+        return self._post("summary", pid, {})
+
+    def list_encounters(self, pid: int) -> dict[str, Any]:
+        return self._post("list_encounters", pid, {})
+
+    def get_encounter(self, pid: int, encounter_id: int) -> dict[str, Any]:
+        return self._post("get_encounter", pid, {"encounter_id": encounter_id})
+
+
+def build_chart_boundary(
+    base_url: str,
+    jwt: str,
+    *,
+    opener: Callable[..., Any] = urllib.request.urlopen,
+    timeout: float = 15.0,
+) -> ChartBoundary:
+    """Return an operation-dispatched chart boundary bound to ``base_url``/``jwt``.
+
+    Exposes ``.summary(pid)`` / ``.list_encounters(pid)`` /
+    ``.get_encounter(pid, encounter_id)``, each POSTing the matching ``op`` to
+    read.php with the forwarded Bearer JWT.
+    """
+    return ChartBoundary(base_url, jwt, opener=opener, timeout=timeout)
+
+
+def build_encounter_tools(chart_boundary: ChartBoundary) -> list[dict[str, Any]]:
+    """Turn a chart boundary into the encounter-navigation ToolSpecs.
+
+    Each spec is ``{name, description, input_schema, handler(pid, tool_input)}``.
+    The handlers dispatch to the boundary with the session pid; get_encounter
+    additionally requires a model-supplied ``encounter_id``.
+    """
+    return [
+        {
+            "name": "list_encounters",
+            "description": (
+                "List the current patient's encounters (visits), most recent "
+                "first, with each encounter's id, date, and reason. Takes no "
+                "arguments: the patient is fixed for this session."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+            "handler": lambda pid, inp: chart_boundary.list_encounters(pid),
+        },
+        {
+            "name": "get_encounter",
+            "description": (
+                "Retrieve the detail of a single encounter (visit) for the "
+                "current patient by its encounter id. Use list_encounters first "
+                "to find the id."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {"encounter_id": {"type": "integer"}},
+                "required": ["encounter_id"],
+                "additionalProperties": False,
+            },
+            "handler": lambda pid, inp: chart_boundary.get_encounter(pid, int(inp["encounter_id"])),
+        },
+    ]

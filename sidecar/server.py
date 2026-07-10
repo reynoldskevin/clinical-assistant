@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 
 from agent import ClaudeAgent
-from factory import build_boundary, build_message_creator
+from factory import build_boundary, build_chart_boundary, build_encounter_tools, build_message_creator
 from observability import TraceCollector
 
 # An agent-builder maps (pid, jwt) -> an object with .run(question, pid) -> str.
@@ -70,12 +70,29 @@ def process_ask(
     return 200, {"answer": answer}
 
 
-def default_agent_builder(summary_url: str, message_creator: Any) -> AgentBuilder:
-    """Build a per-request ClaudeAgent bound to the forwarded JWT."""
+def default_agent_builder(
+    summary_url: str,
+    message_creator: Any,
+    read_url: str | None = None,
+) -> AgentBuilder:
+    """Build a per-request ClaudeAgent bound to the forwarded JWT.
+
+    The agent gets the built-in summary tool plus the operation-dispatched chart
+    tools (list_encounters / get_encounter) that POST to read.php with the same
+    forwarded JWT. ``read_url`` defaults to the summary URL with ``summary.php``
+    swapped for ``read.php``.
+    """
+    chart_url = read_url or summary_url.replace("summary.php", "read.php")
 
     def build(pid: int, jwt: str) -> ClaudeAgent:
         boundary = build_boundary(summary_url, jwt)
-        return ClaudeAgent(message_creator, boundary, observer=TraceCollector())
+        chart_boundary = build_chart_boundary(chart_url, jwt)
+        return ClaudeAgent(
+            message_creator,
+            boundary,
+            observer=TraceCollector(),
+            extra_tools=build_encounter_tools(chart_boundary),
+        )
 
     return build
 
@@ -155,6 +172,7 @@ def main() -> None:
         "OE_AI_AGENT_SUMMARY_URL",
         "http://localhost:8300/interface/modules/custom_modules/oe-module-ai-agent/public/summary.php",
     )
+    read_url = os.environ.get("OE_AI_AGENT_READ_URL") or summary_url.replace("summary.php", "read.php")
     allow_origin = os.environ.get("OE_AI_AGENT_ALLOW_ORIGIN", "*")
     # On a platform that assigns a port (Railway sets $PORT), bind all interfaces
     # on that port by default; locally, stay on loopback:8900.
@@ -163,7 +181,7 @@ def main() -> None:
     port = int(os.environ.get("OE_AI_AGENT_PORT") or os.environ.get("PORT") or "8900")
 
     message_creator = build_message_creator(api_key)
-    handler = make_handler(default_agent_builder(summary_url, message_creator), allow_origin)
+    handler = make_handler(default_agent_builder(summary_url, message_creator, read_url), allow_origin)
     server = ThreadingHTTPServer((host, port), handler)
     print(f"AI sidecar listening on http://{host}:{port}/ask -> {summary_url}", flush=True)
     try:
