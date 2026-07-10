@@ -43,10 +43,39 @@
     var csrfToken = root.dataset.csrf
         || ((typeof window.csrf_token_js !== 'undefined') ? window.csrf_token_js : '');
 
+    // Inject the widget's animation + spacing CSS once (keyframes and the
+    // ':not(:empty)' rule can't be expressed as inline styles). The margin rule
+    // only spaces the answer from the question field when it actually has content.
+    (function injectStyle() {
+        if (document.getElementById('oe-ai-agent-style')) {
+            return;
+        }
+        var style = document.createElement('style');
+        style.id = 'oe-ai-agent-style';
+        style.textContent =
+            '@keyframes oe-ai-agent-spin{to{transform:rotate(360deg)}}'
+            + '.oe-ai-agent-spinner{display:inline-block;width:0.85em;height:0.85em;'
+            + 'margin-right:0.45em;vertical-align:-0.1em;border:2px solid rgba(0,0,0,0.2);'
+            + 'border-top-color:#337ab7;border-radius:50%;'
+            + 'animation:oe-ai-agent-spin 0.7s linear infinite}'
+            + '.oe-ai-agent-answer:not(:empty){margin-bottom:0.75em}';
+        (document.head || document.documentElement).appendChild(style);
+    })();
+
     function setBusy(busy) {
         if (submit) {
             submit.disabled = busy;
         }
+    }
+
+    // Show the "Thinking..." status with an animated spinner beside it.
+    function showThinking() {
+        answer.textContent = '';
+        var spinner = document.createElement('span');
+        spinner.className = 'oe-ai-agent-spinner';
+        spinner.setAttribute('aria-hidden', 'true');
+        answer.appendChild(spinner);
+        answer.appendChild(document.createTextNode('Thinking...'));
     }
 
     function mintToken() {
@@ -251,7 +280,7 @@
         // back into view at the top of the page when a new question is asked.
         window.scrollTo({ top: 0, behavior: 'smooth' });
         setBusy(true);
-        answer.textContent = 'Thinking...';
+        showThinking();
         mintToken().then(function (jwt) {
             return askSidecar(jwt, text);
         }).then(function (data) {
