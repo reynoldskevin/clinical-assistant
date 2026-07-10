@@ -27,7 +27,7 @@ only**.
 7. **Full regression after green** — once the ticket's own tests pass and the reviewer approves, run the FULL test suite on the branch (it includes accumulated stacked work). A regression halts the ticket for repair before it's marked done.
 8. **No merge — push AND open the MR for review instead.** When a ticket reaches ready-for-merge, push the branch **and create its merge request in the same push** using GitLab push options (see Step 6 for the exact command). The human reviews + merges in the GitLab GUI. Never merge to the base branch yourself. Push ONLY completed tickets (never WIP/blocked). A push/MR failure is NOT a ticket failure — report it and continue. Never `--force`.
    - **MR title** = the subject line of the ticket's **feature commit** — the `feat(<id>)`/`fix(<id>)` implementation commit that begins the feature work — **NOT** the `test(<id>)` commit. The scope is the ticket NUMBER (e.g. `feat(17): …`), matching the `test(17): …` commit, so the MR title carries the ticket number for tracking.
-   - **MR description** = this ticket's `.claude/tickets/<NN-slug>.md`, **FLATTENED to a single line** (YAML frontmatter stripped, all newlines collapsed to spaces). **git forbids newlines in push-option values** (`fatal: push options must not have new line characters`), so the description MUST be one line — markdown structure is lost but the full text is preserved. See Step 6 for the exact `awk`/`tr` flatten.
+   - **MR description** = ONLY the ticket's **`## Description` section** (the prose under the `## Description` heading, up to the next `##` heading — NOT the whole file, NOT the Design/Acceptance/Test-plan/Outcome sections), **FLATTENED to a single line** (newlines collapsed to spaces). **git forbids newlines in push-option values** (`fatal: push options must not have new line characters`), so it MUST be one line. See Step 6 for the exact `awk`/`sed` extraction.
    - **Do NOT delete the source branch on merge** — always pass `-o merge_request.remove_source_branch=false` so the MR's "Delete source branch" box is unchecked.
    - **MR target = `main`** — always. The human reviews and merges MRs in order against `main`; do NOT target another ticket's branch.
    - **Stacked dependency → merge prerequisite.** When a ticket was stacked off an unmerged prior ticket (per #2), its MR MUST declare that the prior ticket's MR merges FIRST — prepend `Depends on: !<prev-MR> — merge that before this.  ` (with a trailing space, NOT a newline) to the flattened description so the order can't be violated. Until the prior merges, the MR diff will show the prior's commits too; it cleans up automatically once the prior is in `main` (rebase onto `main` then to tidy it).
@@ -130,9 +130,9 @@ For each ticket in dependency order:
    tickets; this must be the branch's FIRST push so the options take effect):
 
      TITLE=$(git log --format=%s "origin/main..HEAD" | grep -vE '^test\(' | tail -1)
-     # Flatten the ticket .md into ONE line: drop YAML frontmatter, collapse newlines
-     # to spaces (push options must not contain newlines).
-     DESC=$(awk 'BEGIN{fm=0} /^---$/{fm++; next} fm>=2{print}' .claude/tickets/<NN-slug>.md | tr '\n' ' ' | tr -s ' ')
+     # Extract ONLY the ticket's "## Description" section and flatten it to ONE line
+     # (push options must not contain newlines).
+     DESC=$(awk '/^## Description$/{f=1;next} /^## /{f=0} f' .claude/tickets/<NN-slug>.md | tr '\n' ' ' | sed 's/  */ /g; s/^ //; s/ $//')
      # STACKED ticket only (decision #2): prepend the merge prerequisite (trailing spaces, no newline):
      #   DESC="Depends on: !<prev-MR> — merge that before this.  $DESC"
      git push -u origin <ticket.branch> \
@@ -143,8 +143,8 @@ For each ticket in dependency order:
        -o merge_request.remove_source_branch=false
 
    The MR ALWAYS targets `main`, keeps its source branch (`remove_source_branch=false`),
-   and its description is the FLATTENED ticket .md (single line — push options forbid
-   newlines). TITLE resolves to the ticket's feature commit subject (the earliest
+   and its description is the FLATTENED `## Description` section only (single line — push
+   options forbid newlines). TITLE resolves to the ticket's feature commit subject (the earliest
    non-`test(...)` commit — the `feat/fix` that begins the feature), NOT the test commit.
    GitLab creates the MR server-side over SSH (no token/CLI needed) and prints its URL.
    Because push options only fire on the branch's FIRST (ref-updating) push, get these
@@ -191,9 +191,9 @@ For each ticket in dependency order:
 All of: (1) orchestrator's tests green (verified by you), (2) test files unchanged
 from what you authored, (3) reviewer APPROVES, (4) full regression green on the
 branch → status `ready-for-merge`, then **pushed to `origin` AND its merge request
-opened** (title = the feature commit subject, description = the FLATTENED ticket `.md`,
-target = `main`, `remove_source_branch=false`; a stacked ticket also declares its merge
-prerequisite) via the Step 6 push-options command. Only the human merges (in the GitLab GUI).
+opened** (title = the feature commit subject, description = the FLATTENED `## Description`
+section only, target = `main`, `remove_source_branch=false`; a stacked ticket also declares
+its merge prerequisite) via the Step 6 push-options command. Only the human merges (in the GitLab GUI).
 
 ## What this skill does NOT do
 
