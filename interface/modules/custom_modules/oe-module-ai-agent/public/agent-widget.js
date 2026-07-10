@@ -151,6 +151,9 @@
         if (text === '') {
             return;
         }
+        // A long previous answer may have scrolled the page down; bring the card
+        // back into view at the top of the page when a new question is asked.
+        window.scrollTo({ top: 0, behavior: 'smooth' });
         setBusy(true);
         answer.textContent = 'Thinking...';
         mintToken().then(function (jwt) {
@@ -167,5 +170,18 @@
             setBusy(false);
             question.focus();
         });
+    });
+
+    // Enter submits the question (same as clicking Ask); Shift+Enter inserts a
+    // newline so multi-line questions are still possible.
+    question.addEventListener('keydown', function (evt) {
+        if (evt.key === 'Enter' && !evt.shiftKey) {
+            evt.preventDefault();
+            if (typeof form.requestSubmit === 'function') {
+                form.requestSubmit();
+            } else {
+                form.dispatchEvent(new Event('submit', { cancelable: true }));
+            }
+        }
     });
 })();
