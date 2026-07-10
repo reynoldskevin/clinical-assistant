@@ -36,7 +36,10 @@ def test_list_encounters_posts_op_and_pid_with_bearer():
         captured["method"] = request.method
         captured["auth"] = request.headers.get("Authorization")
         captured["body"] = json.loads(request.data)
-        return _FakeResponse(b'{"encounters": [{"encounter": 5}]}')
+        # read.php returns the provider result directly — a BARE ARRAY for
+        # list_encounters (NOT wrapped in an object). Regression for the contract
+        # bug where the boundary rejected arrays as "non-object result".
+        return _FakeResponse(b'[{"encounter": 5}, {"encounter": 4}]')
 
     boundary = build_chart_boundary("http://openemr/read.php", "jwt-abc", opener=opener)
     out = boundary.list_encounters(42)
@@ -45,7 +48,7 @@ def test_list_encounters_posts_op_and_pid_with_bearer():
     assert captured["method"] == "POST"
     assert captured["auth"] == "Bearer jwt-abc"
     assert captured["body"] == {"op": "list_encounters", "pid": 42, "params": {}}
-    assert out == {"encounters": [{"encounter": 5}]}
+    assert out == [{"encounter": 5}, {"encounter": 4}]
 
 
 def test_get_encounter_posts_encounter_id_in_params():

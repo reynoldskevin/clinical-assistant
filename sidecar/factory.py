@@ -113,7 +113,7 @@ class ChartBoundary:
         self._opener = opener
         self._timeout = timeout
 
-    def _post(self, op: str, pid: int, params: dict[str, Any]) -> dict[str, Any]:
+    def _post(self, op: str, pid: int, params: dict[str, Any]) -> dict[str, Any] | list[Any]:
         payload = json.dumps({"op": op, "pid": pid, "params": params}).encode("utf-8")
         request = urllib.request.Request(
             self._base_url,
@@ -128,18 +128,30 @@ class ChartBoundary:
             body = response.read()
 
         parsed = json.loads(body)
-        if not isinstance(parsed, dict):
-            raise ValueError("chart boundary returned a non-object result")
+        # read.php returns the provider result directly: an object for summary /
+        # get_encounter, and a bare ARRAY for list_encounters / get_results. Accept
+        # both — a JSON scalar (string/number/null) would be the unexpected case.
+        if not isinstance(parsed, (dict, list)):
+            raise ValueError("chart boundary returned an unexpected result type")
         return parsed
 
     def summary(self, pid: int) -> dict[str, Any]:
-        return self._post("summary", pid, {})
+        result = self._post("summary", pid, {})
+        if not isinstance(result, dict):
+            raise ValueError("summary result must be an object")
+        return result
 
-    def list_encounters(self, pid: int) -> dict[str, Any]:
-        return self._post("list_encounters", pid, {})
+    def list_encounters(self, pid: int) -> list[Any]:
+        result = self._post("list_encounters", pid, {})
+        if not isinstance(result, list):
+            raise ValueError("list_encounters result must be an array")
+        return result
 
     def get_encounter(self, pid: int, encounter_id: int) -> dict[str, Any]:
-        return self._post("get_encounter", pid, {"encounter_id": encounter_id})
+        result = self._post("get_encounter", pid, {"encounter_id": encounter_id})
+        if not isinstance(result, dict):
+            raise ValueError("get_encounter result must be an object")
+        return result
 
 
 def build_chart_boundary(
