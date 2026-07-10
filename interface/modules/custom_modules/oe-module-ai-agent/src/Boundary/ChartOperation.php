@@ -24,4 +24,5 @@ enum ChartOperation: string
     case Summary = 'summary';
     case ListEncounters = 'list_encounters';
     case GetEncounter = 'get_encounter';
+    case GetResults = 'get_results';
 }

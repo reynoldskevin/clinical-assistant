@@ -1,14 +1,23 @@
 ---
 id: 018
 title: Tool — get_results (lab/diagnostic results) (+ eval case)
-status: tests-authored     # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
+status: ready-for-merge    # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
 depends_on: [017]
 branch: ticket/18-get-results
 base_branch: main          # T17 is merged to main (c091c7b); T18 branches off main, not stacked
 test_command: "docker exec -w /var/www/localhost/htdocs/openemr development-easy-openemr-1 ./vendor/bin/phpunit -c phpunit-isolated.xml tests/Tests/Isolated/Modules/AiAgent  &&  etl/.venv/bin/pytest -c sidecar/pytest.ini sidecar/tests"
 full_suite_command: "docker exec -w /var/www/localhost/htdocs/openemr development-easy-openemr-1 ./vendor/bin/phpunit -c phpunit-isolated.xml  &&  etl/.venv/bin/pytest -c sidecar/pytest.ini sidecar/tests"
-attempts: 0
+attempts: 1
 ---
+
+## Outcome (ready-for-merge)
+
+- Tests authored + locked: `2c19423`. Implementation: attempts 1 (implementer passed
+  first try; reviewer APPROVED, no blocking findings, no nits).
+- Isolated PHP module suite **57/57**, sidecar **52/52** (verified by the orchestrator).
+- Regression: full isolated suite green apart from the pre-existing
+  `BearerTokenAuthorizationStrategyTest` flake (already on `main`; not a T18 regression).
+- Branch `ticket/18-get-results` off `main` (not stacked — T17 merged). MR targets `main`.
 
 ## Description
 

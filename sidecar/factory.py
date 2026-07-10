@@ -141,6 +141,9 @@ class ChartBoundary:
     def get_encounter(self, pid: int, encounter_id: int) -> dict[str, Any]:
         return self._post("get_encounter", pid, {"encounter_id": encounter_id})
 
+    def get_results(self, pid: int) -> dict[str, Any]:
+        return self._post("get_results", pid, {})
+
 
 def build_chart_boundary(
     base_url: str,
@@ -196,3 +199,28 @@ def build_encounter_tools(chart_boundary: ChartBoundary) -> list[dict[str, Any]]
             "handler": lambda pid, inp: chart_boundary.get_encounter(pid, int(inp["encounter_id"])),
         },
     ]
+
+
+def build_results_tool(chart_boundary: ChartBoundary) -> dict[str, Any]:
+    """Turn a chart boundary into the lab/diagnostic-results ToolSpec.
+
+    A single ``{name, description, input_schema, handler(pid, tool_input)}`` dict.
+    The handler dispatches to the boundary with the fixed session pid; the model
+    supplies no arguments (the patient is fixed for this session).
+    """
+    return {
+        "name": "get_results",
+        "description": (
+            "Retrieve the current patient's lab and diagnostic results — each "
+            "result's value, units, reference range, abnormal flag, status, and "
+            "date. A complete results view, distinct from the summary's capped "
+            "recent labs. Takes no arguments: the patient is fixed for this "
+            "session."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+        "handler": lambda pid, inp: chart_boundary.get_results(pid),
+    }

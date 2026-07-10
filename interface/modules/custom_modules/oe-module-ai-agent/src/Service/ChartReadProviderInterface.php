@@ -27,4 +27,9 @@ interface ChartReadProviderInterface extends PatientSummaryProviderInterface
      * @return array<string, mixed>
      */
     public function getEncounter(int $pid, int $encounterId): array;
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function getResults(int $pid): array;
 }

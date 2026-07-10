@@ -82,6 +82,26 @@ final class PatientSummaryService implements ChartReadProviderInterface
     }
 
     /**
+     * The dedicated, complete lab/diagnostic results read — distinct from the
+     * summary's capped recent_labs. Pid-scoped via the procedure_order join, so
+     * only this patient's results are returned, most-recent-first.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function getResults(int $pid): array
+    {
+        return $this->fetchList(
+            'SELECT pr.result_code, pr.result_text, pr.result, pr.units, pr.`range`, '
+            . 'pr.abnormal, pr.date, pr.result_status FROM procedure_result pr '
+            . 'JOIN procedure_report prpt ON prpt.procedure_report_id = pr.procedure_report_id '
+            . 'JOIN procedure_order po ON po.procedure_order_id = prpt.procedure_order_id '
+            . 'WHERE po.patient_id = ? '
+            . 'ORDER BY pr.date DESC',
+            $pid
+        );
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function demographics(int $pid): array
