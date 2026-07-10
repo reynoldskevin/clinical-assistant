@@ -153,8 +153,11 @@ class ChartBoundary:
             raise ValueError("get_encounter result must be an object")
         return result
 
-    def get_results(self, pid: int) -> dict[str, Any]:
-        return self._post("get_results", pid, {})
+    def get_results(self, pid: int) -> list[Any]:
+        result = self._post("get_results", pid, {})
+        if not isinstance(result, list):
+            raise ValueError("get_results result must be an array")
+        return result
 
 
 def build_chart_boundary(

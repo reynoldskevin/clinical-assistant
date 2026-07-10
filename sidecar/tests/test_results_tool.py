@@ -35,7 +35,9 @@ def test_chart_boundary_get_results_posts_op_with_bearer():
         captured["method"] = request.method
         captured["auth"] = request.headers.get("Authorization")
         captured["body"] = json.loads(request.data)
-        return _FakeResponse(b'{"results": [{"result_code": "4548-4"}]}')
+        # read.php returns the provider result directly — a BARE ARRAY for
+        # get_results (NOT wrapped in an object), matching what the live endpoint sends.
+        return _FakeResponse(b'[{"result_code": "4548-4"}, {"result_code": "2339-0"}]')
 
     boundary = build_chart_boundary("http://openemr/read.php", "jwt-xyz", opener=opener)
     out = boundary.get_results(42)
@@ -44,7 +46,7 @@ def test_chart_boundary_get_results_posts_op_with_bearer():
     assert captured["method"] == "POST"
     assert captured["auth"] == "Bearer jwt-xyz"
     assert captured["body"] == {"op": "get_results", "pid": 42, "params": {}}
-    assert out == {"results": [{"result_code": "4548-4"}]}
+    assert out == [{"result_code": "4548-4"}, {"result_code": "2339-0"}]
 
 
 def test_boundary_get_results_propagates_http_errors():
