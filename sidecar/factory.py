@@ -129,8 +129,9 @@ class ChartBoundary:
 
         parsed = json.loads(body)
         # read.php returns the provider result directly: an object for summary /
-        # get_encounter, and a bare ARRAY for list_encounters / get_results. Accept
-        # both — a JSON scalar (string/number/null) would be the unexpected case.
+        # get_encounter, and a bare ARRAY for list_encounters / get_results /
+        # get_medications. Accept both — a JSON scalar (string/number/null) would be
+        # the unexpected case.
         if not isinstance(parsed, (dict, list)):
             raise ValueError("chart boundary returned an unexpected result type")
         return parsed
@@ -157,6 +158,12 @@ class ChartBoundary:
         result = self._post("get_results", pid, {})
         if not isinstance(result, list):
             raise ValueError("get_results result must be an array")
+        return result
+
+    def get_medications(self, pid: int, active_only: bool = False) -> list[Any]:
+        result = self._post("get_medications", pid, {"active_only": active_only})
+        if not isinstance(result, list):
+            raise ValueError("get_medications result must be an array")
         return result
 
 
@@ -238,4 +245,34 @@ def build_results_tool(chart_boundary: ChartBoundary) -> dict[str, Any]:
             "additionalProperties": False,
         },
         "handler": lambda pid, inp: chart_boundary.get_results(pid),
+    }
+
+
+def build_medications_tool(chart_boundary: ChartBoundary) -> dict[str, Any]:
+    """Turn a chart boundary into the medications ToolSpec.
+
+    A single ``{name, description, input_schema, handler(pid, tool_input)}`` dict.
+    The handler dispatches to the boundary with the fixed session pid; the model
+    may optionally supply ``active_only`` to restrict the list to active meds.
+    Each returned row carries a ``status_conflict`` "stale-active" data-quality
+    flag — a row flagged active whose end date has already passed — so the model
+    can hedge rather than blindly trust the active flag.
+    """
+    return {
+        "name": "get_medications",
+        "description": (
+            "Retrieve the current patient's medications (prescriptions and "
+            "medication-list entries) — each with its drug name, rxnorm code, "
+            "active flag, start/end dates, and a status_conflict flag that is "
+            "true when a medication is marked active yet its end date has already "
+            "passed (a possibly-stale record to hedge on). Pass active_only=true "
+            "to list only active medications. The patient is fixed for this "
+            "session."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"active_only": {"type": "boolean"}},
+            "additionalProperties": False,
+        },
+        "handler": lambda pid, inp: chart_boundary.get_medications(pid, bool(inp.get("active_only", False))),
     }

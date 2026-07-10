@@ -102,6 +102,64 @@ final class PatientSummaryService implements ChartReadProviderInterface
     }
 
     /**
+     * The dedicated medications read — unions `prescriptions` and
+     * medication-type `lists` rows for this patient only, most-recent-first by
+     * start date. Each row carries a "stale-active" data-quality flag
+     * (status_conflict): true iff the row is flagged active yet its own end_date
+     * has already passed (per ARCHITECTURE.md §2.5). When $activeOnly is true,
+     * only rows whose active flag is set are returned — but flagged stale-active
+     * rows are still active, so they are kept (and flagged), not dropped.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function getMedications(int $pid, bool $activeOnly): array
+    {
+        $staleConflict = static fn (string $active, string $end): string =>
+            "({$active} = 1 AND {$end} IS NOT NULL AND {$end} <> '' "
+            . "AND {$end} <> '0000-00-00' AND DATE({$end}) < CURDATE())";
+
+        $prescriptions =
+            'SELECT '
+            . "CONCAT('prescription:', p.id) AS ref, "
+            . 'p.drug AS drug, '
+            . 'p.rxnorm_drugcode AS rxnorm, '
+            . 'p.active AS active, '
+            . 'p.start_date AS start_date, '
+            . 'p.end_date AS end_date, '
+            . $staleConflict('p.active', 'p.end_date') . ' AS status_conflict '
+            . 'FROM prescriptions p WHERE p.patient_id = ?'
+            . ($activeOnly ? ' AND p.active = 1' : '');
+
+        $listMeds =
+            'SELECT '
+            . "CONCAT('list:', l.id) AS ref, "
+            . 'l.title AS drug, '
+            . 'l.diagnosis AS rxnorm, '
+            . 'l.activity AS active, '
+            . 'l.begdate AS start_date, '
+            . 'l.enddate AS end_date, '
+            . $staleConflict('l.activity', 'l.enddate') . ' AS status_conflict '
+            . "FROM lists l WHERE l.pid = ? AND l.type = 'medication'"
+            . ($activeOnly ? ' AND l.activity = 1' : '');
+
+        $sql = $prescriptions . ' UNION ALL ' . $listMeds . ' ORDER BY start_date DESC';
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindValue(1, $pid, \PDO::PARAM_INT);
+        $stmt->bindValue(2, $pid, \PDO::PARAM_INT);
+        $stmt->execute();
+
+        $rows = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+            $row['active'] = (bool) $row['active'];
+            $row['status_conflict'] = (bool) $row['status_conflict'];
+            $rows[] = $row;
+        }
+
+        return $rows;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function demographics(int $pid): array

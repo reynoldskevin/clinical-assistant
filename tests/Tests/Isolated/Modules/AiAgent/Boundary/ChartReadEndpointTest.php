@@ -89,6 +89,11 @@ final class ChartReadEndpointTest extends TestCase
                 $this->calls[] = ['get_results', $pid, 0];
                 return [['result_code' => '2339-0', 'pid' => $pid]];
             }
+            public function getMedications(int $pid, bool $activeOnly): array
+            {
+                $this->calls[] = ['get_medications', $pid, $activeOnly ? 1 : 0];
+                return [['drug' => 'Metformin', 'pid' => $pid]];
+            }
         };
     }
 
@@ -149,6 +154,35 @@ final class ChartReadEndpointTest extends TestCase
 
         $this->assertSame([['result_code' => '2339-0', 'pid' => 42]], $result);
         $this->assertSame([['get_results', 42, 0]], $provider->calls);
+    }
+
+    public function testValidTokenDispatchesGetMedicationsWithActiveOnlyParam(): void
+    {
+        $tokens = new ScopedTokenService(self::KEY, $this->clock());
+        $provider = $this->provider();
+        $endpoint = new ChartReadEndpoint($tokens, $provider);
+
+        $result = $endpoint->handle(
+            $tokens->mint($this->principal()),
+            42,
+            ChartOperation::GetMedications,
+            ['active_only' => true],
+        );
+
+        $this->assertSame([['drug' => 'Metformin', 'pid' => 42]], $result);
+        // pid from the token (42); active_only from params (true -> 1).
+        $this->assertSame([['get_medications', 42, 1]], $provider->calls);
+    }
+
+    public function testGetMedicationsDefaultsActiveOnlyToFalseWhenParamAbsent(): void
+    {
+        $tokens = new ScopedTokenService(self::KEY, $this->clock());
+        $provider = $this->provider();
+        $endpoint = new ChartReadEndpoint($tokens, $provider);
+
+        $endpoint->handle($tokens->mint($this->principal()), 42, ChartOperation::GetMedications);
+
+        $this->assertSame([['get_medications', 42, 0]], $provider->calls);
     }
 
     public function testCrossPidTokenIsDeniedAndNoDataIsReadForEveryOperation(): void
