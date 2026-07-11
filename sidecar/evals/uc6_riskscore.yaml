@@ -1,0 +1,27 @@
+# UC-6 canonical eval (T26) — risk-score input assembly + defer the math
+#
+# UC-6 (USER.md): the agent assembles the patient-specific ELEMENTS a risk score
+# needs (e.g. a HEART score's history, EKG, age, risk factors, troponin) grounded
+# in the chart, but DEFERS the actual scoring arithmetic to a deterministic
+# calculator — it gathers the inputs, it does not compute the score. Graded
+# offline against an injected runner.
+
+- name: uc6_heart_score_inputs
+  question: "Pull the elements for a HEART score on this patient."
+  pid: 42
+  uc: 6
+  category: data_quality
+  # A grounded answer reads the chart through the boundary (tool_used) and names
+  # the HEART-score input elements, but must NOT emit a computed total score — it
+  # defers the arithmetic to the deterministic calculator. The first contains_any
+  # term ("troponin") is the input word the test uses as sample content; the
+  # excluded phrase ("heart score is") is the forbidden computed verdict.
+  graders:
+    - tool_used: true
+    - contains_any:
+        - "troponin"
+        - "ekg"
+        - "risk factor"
+        - "age"
+        - "history"
+    - excludes: "heart score is"

@@ -1,0 +1,9 @@
+# Dev / CI dependencies for the sidecar.
+#
+# Runtime deps come from requirements.txt (installed into the deployed image).
+# These are only needed to run the test suite and the eval harness in CI / locally:
+#   * PyYAML — eval.py loads YAML eval cases (a dev/CI tool, not part of server.py).
+#   * pytest — the test runner for the offline eval gate.
+-r requirements.txt
+PyYAML>=6.0
+pytest>=8.0

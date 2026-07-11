@@ -1,0 +1,52 @@
+# GitLab CI for the AI sidecar eval gate (T26).
+#
+# Two-tier strategy:
+#   * eval:offline — per-push / MR blocking gate. Runs the deterministic, offline
+#     eval tests (no live LLM, no secrets). Fast and free; blocks the merge.
+#   * eval:live    — on-demand / scheduled / tag scored sweep. Runs the REAL
+#     agent+LLM over every eval case and fails below the pass-rate threshold.
+#     Needs the ANTHROPIC_API_KEY CI variable. Never blocks an MR (manual +
+#     allow_failure).
+
+stages:
+  - test
+  - eval
+
+default:
+  image: python:3.12-slim
+
+# Per-push / MR blocking gate: deterministic offline eval tests.
+eval:offline:
+  stage: test
+  before_script:
+    - python -m pip install --upgrade pip
+    # Dev deps: pytest (runner) + PyYAML (eval.py loads YAML cases). Pulls in the
+    # runtime deps too so any module a test imports is available.
+    - pip install -r sidecar/requirements-dev.txt
+  script:
+    - python -m pytest -c sidecar/pytest.ini sidecar/tests
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH'
+
+# On-demand / scheduled / tag live scored sweep. Non-blocking on MRs.
+eval:live:
+  stage: eval
+  before_script:
+    - python -m pip install --upgrade pip
+    # Runtime deps (anthropic) + PyYAML for the eval harness.
+    - pip install -r sidecar/requirements-dev.txt
+  script:
+    - cd sidecar
+    - python -m eval --live --threshold 0.9
+  variables:
+    ANTHROPIC_API_KEY: $ANTHROPIC_API_KEY
+  rules:
+    # Scheduled runs and release tags run it automatically (still non-blocking).
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      allow_failure: true
+    - if: '$CI_COMMIT_TAG'
+      allow_failure: true
+    # On everything else it is manual and never blocks the pipeline.
+    - when: manual
+      allow_failure: true
