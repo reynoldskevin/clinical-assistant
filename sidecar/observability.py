@@ -13,6 +13,7 @@ Two observers are offered:
 """
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 
 # Pricing in USD per 1,000,000 tokens as ``(input_price, output_price)``.
@@ -30,6 +31,19 @@ class NullObserver:
 
     def record_tool_call(self, name: str, ok: bool) -> None:
         """Ignore a tool call's outcome."""
+
+
+class NullTracer:
+    """A tracer that opens no spans (the default, zero-overhead tracer).
+
+    Its :meth:`turn` returns a no-op context manager, so wrapping an agent turn
+    in it has no effect. This module deliberately imports nothing from
+    ``braintrust`` — the real, guarded Braintrust tracer lives in ``factory``.
+    """
+
+    def turn(self, metadata: dict[str, Any]) -> contextlib.AbstractContextManager[None]:
+        """Return a no-op context manager, ignoring the turn's ``metadata``."""
+        return contextlib.nullcontext()
 
 
 class TraceCollector:

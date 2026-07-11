@@ -10,6 +10,7 @@ no sockets) and a thin ``BaseHTTPRequestHandler`` that adapts it to HTTP.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -26,6 +27,7 @@ from factory import (
     build_message_creator,
     build_results_tool,
     build_search_tool,
+    build_tracer,
 )
 from observability import TraceCollector
 
@@ -35,11 +37,49 @@ AgentBuilder = Callable[[int, str], Any]
 _BEARER_PREFIX = "Bearer "
 
 
+def _span(tracer: Any, metadata: dict[str, Any]) -> contextlib.AbstractContextManager[Any]:
+    """Return the tracer's turn context manager, safely defaulting to a no-op.
+
+    Observability must never break the request path: if there is no tracer, or
+    ``tracer.turn(metadata)`` raises, a no-op context manager is returned so the
+    agent still runs and the answer is still produced.
+    """
+    if tracer is None:
+        return contextlib.nullcontext()
+    try:
+        return tracer.turn(metadata)
+    except Exception:  # noqa: BLE001 - telemetry must never break the request
+        logging.getLogger("sidecar").exception("tracer.turn failed; continuing without a span")
+        return contextlib.nullcontext()
+
+
+def _run_agent(
+    agent: Any,
+    question: str,
+    pid: int,
+    store: ConversationStore | None,
+    conversation_id: Any,
+    multi_turn: bool,
+) -> tuple[str, list[Any] | None]:
+    """Run one agent turn, returning ``(answer, new_history)``.
+
+    ``new_history`` is the updated conversation history for the multi-turn path
+    (so the caller can persist it), or ``None`` for the stateless path.
+    """
+    if multi_turn:
+        assert store is not None  # multi_turn implies a store; narrows the type
+        history = store.history(conversation_id, pid)
+        answer, new_history = agent.run_turn(question, pid, history)
+        return answer, new_history
+    return agent.run(question, pid), None
+
+
 def process_ask(
     authorization: str,
     raw_body: bytes,
     agent_builder: AgentBuilder,
     store: ConversationStore | None = None,
+    tracer: Any = None,
 ) -> tuple[int, dict[str, Any]]:
     """Validate a /ask request and run the agent. Returns (status, json_body).
 
@@ -71,14 +111,47 @@ def process_ask(
 
     multi_turn = store is not None and isinstance(conversation_id, str) and conversation_id != ""
 
+    # Tag this turn's observability span with the patient (and, for multi-turn,
+    # the conversation) so the auto-logged Claude calls group by conversation +
+    # patient. Guarded end-to-end: a failing tracer never breaks the request.
+    metadata: dict[str, Any] = {"pid": pid}
+    if multi_turn:
+        metadata["conversation_id"] = conversation_id
+
     try:
         agent = agent_builder(pid, jwt)
-        if multi_turn:
-            history = store.history(conversation_id, pid)
-            answer, new_history = agent.run_turn(question, pid, history)
-            store.remember(conversation_id, pid, new_history)
+        # Enter the span, but never let a span-lifecycle failure re-run the agent.
+        # The agent is invoked from exactly ONE call site below so an agent error
+        # (the expensive failure path) can never trigger a second LLM call.
+        cm = _span(tracer, metadata)
+        try:
+            cm.__enter__()
+            entered = True
+        except Exception:  # noqa: BLE001 - a span enter error must not break the request
+            logging.getLogger("sidecar").exception("span __enter__ failed; continuing without it")
+            entered = False
+
+        try:
+            result = _run_agent(agent, question, pid, store, conversation_id, multi_turn)
+        except BaseException as e:
+            # Agent error: close the span (swallowing exit errors), then let the
+            # exception propagate to the outer handler which masks it to 502.
+            if entered:
+                try:
+                    cm.__exit__(type(e), e, e.__traceback__)
+                except Exception:  # noqa: BLE001 - a span exit error must not mask the real failure
+                    logging.getLogger("sidecar").exception("span __exit__ failed; ignoring")
+            raise
         else:
-            answer = agent.run(question, pid)
+            if entered:
+                try:
+                    cm.__exit__(None, None, None)
+                except Exception:  # noqa: BLE001 - a span exit error must not break the request
+                    logging.getLogger("sidecar").exception("span __exit__ failed; ignoring")
+
+        answer, new_history = result
+        if multi_turn and new_history is not None:
+            store.remember(conversation_id, pid, new_history)
     except Exception:
         # Never leak internal detail (API errors, boundary failures) to the browser.
         logging.getLogger("sidecar").exception("agent turn failed", extra={"pid": pid})
@@ -133,6 +206,7 @@ def make_handler(
     agent_builder: AgentBuilder,
     allow_origin: str,
     store: ConversationStore | None = None,
+    tracer: Any = None,
 ) -> type[BaseHTTPRequestHandler]:
     """Create a request-handler class bound to an agent-builder and CORS origin.
 
@@ -171,6 +245,7 @@ def make_handler(
                 raw_body,
                 agent_builder,
                 store,
+                tracer,
             )
             self._send_json(status, body)
 
@@ -225,10 +300,14 @@ def main() -> None:
     # Ephemeral, pid-scoped, TTL-bounded store so follow-up questions carry
     # context across turns (in-memory only — no PHI persisted to disk).
     store = ConversationStore()
+    # Optional Braintrust turn-tracer: no-op unless BRAINTRUST_API_KEY is set,
+    # and fully guarded so observability can never break the request path.
+    tracer = build_tracer()
     handler = make_handler(
         default_agent_builder(summary_url, message_creator, read_url),
         allow_origin,
         store,
+        tracer,
     )
     server = ThreadingHTTPServer((host, port), handler)
     print(f"AI sidecar listening on http://{host}:{port}/ask -> {summary_url}", flush=True)
