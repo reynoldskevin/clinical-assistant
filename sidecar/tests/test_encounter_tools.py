@@ -171,6 +171,9 @@ def test_handler_failure_is_reported_as_tool_error_not_crash():
     # The loop must not crash; the model gets an error tool_result and can respond.
     result = agent.run("list encounters", pid=42)
 
-    assert result == "The encounter list is unavailable."
+    # startswith, not equality: T31 appends a partial-failure disclosure on the
+    # failed-tool path (this is that path). The clinical text is intact.
+    assert result.startswith("The encounter list is unavailable.")
+    assert "may be incomplete" in result.lower()   # the failure is surfaced, not silent
     trs = _tool_results(creator.calls[1]["messages"])
     assert trs[0]["is_error"] is True

@@ -87,7 +87,10 @@ def test_boundary_failure_is_recorded_and_agent_recovers():
 
     result = agent.run("summarize", pid=42)  # must NOT raise
 
-    assert result == "I could not retrieve the chart."
+    # startswith, not equality: T31 appends a partial-failure disclosure on the
+    # failed-tool path (this is that path). The clinical text is intact.
+    assert result.startswith("I could not retrieve the chart.")
+    assert "may be incomplete" in result.lower()   # the failure is surfaced, not silent
     s = trace.summary()
     assert s["tool_calls"] == 1
     assert s["tool_failures"] == 1

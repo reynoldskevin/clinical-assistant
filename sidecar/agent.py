@@ -115,6 +115,18 @@ _TRUNCATION_NOTICE = (
 )
 
 
+# Appended to the returned answer when any tool returned an is_error result this
+# turn (a boundary/handler exception or an unknown tool). Signals that the answer
+# was produced despite a failed record lookup, so it may be incomplete. Kept
+# digit-free and citation-free (like _TRUNCATION_NOTICE) so it never perturbs the
+# grounding gate; attached AFTER gating and only to the returned string, not
+# persisted history. Independent of and composable with _TRUNCATION_NOTICE.
+_DEGRADED_NOTICE = (
+    "\n\n(Note: one or more record lookups failed, so this answer may be "
+    "incomplete. Try again, or verify against the chart.)"
+)
+
+
 class ClaudeAgent:
     """Runs a bounded, manual tool-use loop against an injected message-creator."""
 
@@ -241,6 +253,10 @@ class ClaudeAgent:
         # Cumulative tool executions across the whole turn (every tool_result
         # appended counts once — success, failure, unknown, injected alike).
         tool_calls_made = 0
+        # Whether ANY tool returned an is_error result this turn (boundary
+        # exception, injected-handler exception, or unknown tool). Drives the
+        # partial-failure disclosure at the final-answer branch.
+        tool_failure_seen = False
         # Every ``ref`` value seen in tool-result data this turn. Used by the
         # grounding gate to distinguish cited-from-record from fabricated refs.
         retrieved_refs: set[str] = set()
@@ -299,6 +315,14 @@ class ClaudeAgent:
                     if on_event is not None:
                         on_event({"type": "truncated", "reason": "tool_budget"})
                     answer = answer + _TRUNCATION_NOTICE
+                # Partial-failure disclosure: independent of and composable with
+                # the truncation notice above. If any tool returned is_error this
+                # turn, disclose that the answer may be incomplete. Appended to the
+                # RETURNED string only (after gating) and one degraded event emitted.
+                if tool_failure_seen:
+                    if on_event is not None:
+                        on_event({"type": "degraded", "reason": "tool_failure"})
+                    answer = answer + _DEGRADED_NOTICE
                 return answer, messages
 
             messages.append({"role": "assistant", "content": resp.content})
@@ -314,6 +338,7 @@ class ClaudeAgent:
                     except Exception:
                         # Record the failure and feed an error result back so the
                         # model can respond; the loop must not crash.
+                        tool_failure_seen = True
                         self._observer.record_tool_call("get_patient_summary", False)
                         if on_event is not None:
                             on_event({"type": "tool", "name": block.name, "ok": False})
@@ -345,6 +370,7 @@ class ClaudeAgent:
                     try:
                         result = handler(pid, block.input)
                     except Exception:
+                        tool_failure_seen = True
                         self._observer.record_tool_call(block.name, False)
                         if on_event is not None:
                             on_event({"type": "tool", "name": block.name, "ok": False})
@@ -370,6 +396,7 @@ class ClaudeAgent:
                             }
                         )
                 else:
+                    tool_failure_seen = True
                     self._observer.record_tool_call(block.name, False)
                     if on_event is not None:
                         on_event({"type": "tool", "name": block.name, "ok": False})
