@@ -1,7 +1,7 @@
 ---
 id: 027
 title: Data-quality handling (lean close) — free-text-only flag; gap/absence already satisfied; duplicates deferred
-status: tests-authored     # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
+status: ready-for-merge    # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
 depends_on: [009]
 branch: ticket/27-data-quality-lean
 base_branch: main          # T26 merged; branch off main
