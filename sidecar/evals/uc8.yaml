@@ -1,0 +1,23 @@
+# UC-8 evals (T21) — tool chaining + max-tool-calls budget
+#
+# This case asserts the agent answers a question that requires chaining tools
+# (list the patient's encounters, then read the most recent one) by actually
+# consulting the chart through the boundary (tool_used), while staying within a
+# bounded number of tool executions (max_tool_calls). Graded offline against an
+# injected runner, so the graders check observable behaviour: whether tools were
+# used, whether the tool budget was respected, and whether the output names real
+# encounter content.
+
+- name: uc8_encounter_chain
+  question: "What was the reason for this patient's most recent encounter?"
+  pid: 1
+  # A grounded answer must consult the chart (tool_used) and stay within the
+  # tool-call budget. The first contains_any term ("encounter") is a natural
+  # word the test also samples as expected content.
+  graders:
+    - tool_used: true
+    - max_tool_calls: 4
+    - contains_any:
+        - "encounter"
+        - "visit"
+        - "reason"
