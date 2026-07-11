@@ -1,7 +1,7 @@
 ---
 id: obs-1
 title: Tag Braintrust with conversation_id + pid (group multi-turn conversations)
-status: tests-authored     # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
+status: ready-for-merge    # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
 depends_on: [022]
 branch: feat/braintrust-conversation-metadata
 base_branch: main          # T22 merged; branch off main

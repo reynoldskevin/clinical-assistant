@@ -54,6 +54,49 @@ def build_message_creator(
     return create
 
 
+def build_tracer() -> Any:
+    """Return a tracer that wraps each agent turn in a Braintrust span.
+
+    Returns a :class:`NullTracer` (zero-overhead, no braintrust import) unless
+    ``BRAINTRUST_API_KEY`` is set. When it is, a Braintrust-backed tracer is
+    returned whose ``turn(metadata)`` opens a ``braintrust`` span carrying that
+    metadata as a context manager, so the ``wrap_anthropic`` model calls nest
+    under it (grouping the conversation by ``conversation_id`` + ``pid``).
+
+    Fully guarded, mirroring ``build_message_creator``: any import or runtime
+    error while wiring braintrust degrades to a :class:`NullTracer`, so
+    observability can never break the request path.
+    """
+    from observability import NullTracer
+
+    if not os.environ.get("BRAINTRUST_API_KEY"):
+        return NullTracer()
+
+    try:
+        import braintrust
+
+        # Idempotent: safe to call on every build. Initialises the logger the
+        # spans attach to (the same project the wrapped client logs into).
+        braintrust.init_logger(project=os.environ.get("BRAINTRUST_PROJECT", "oe-ai-agent"))
+
+        class _BraintrustTracer:
+            """Opens a braintrust span per turn, carrying the turn metadata."""
+
+            def turn(self, metadata: dict[str, Any]) -> Any:
+                try:
+                    return braintrust.start_span(name="agent-turn", metadata=metadata)
+                except Exception:  # noqa: BLE001 - a span op must never break the turn
+                    logging.getLogger("sidecar").exception("Braintrust span failed; continuing without it")
+                    import contextlib
+
+                    return contextlib.nullcontext()
+
+        return _BraintrustTracer()
+    except Exception:  # noqa: BLE001 - never let telemetry wiring fail the request path
+        logging.getLogger("sidecar").exception("Braintrust tracer init failed; continuing without it")
+        return NullTracer()
+
+
 def build_boundary(
     summary_url: str,
     jwt: str,
