@@ -1,0 +1,68 @@
+# GitLab CI for the AI sidecar eval gate (T26).
+#
+# Two-tier strategy:
+#   * eval:offline — deterministic offline eval tests (no live LLM, no secrets).
+#   * eval:live    — scored sweep against the REAL agent+LLM; fails below the
+#     pass-rate threshold. Needs the ANTHROPIC_API_KEY CI variable.
+#
+# IMPORTANT — this project's GitLab instance currently has NO registered runners.
+# A pipeline on every MR / branch push would sit `pending` forever (no runner to
+# pick it up) and BLOCK merges. So the top-level `workflow:rules` below create a
+# pipeline ONLY where a runner is expected and the gate is explicitly wanted:
+# scheduled runs, release tags, a manual "Run pipeline" (web), or when RUN_EVAL_CI
+# is set. Ordinary MRs and branch pushes create NO pipeline and never block a merge.
+#
+# Once a runner is registered and you want the per-push blocking gate, add
+#   - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+#   - if: '$CI_COMMIT_BRANCH'
+# to the workflow rules (and drop this note).
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_COMMIT_TAG'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - if: '$RUN_EVAL_CI'
+    - when: never
+
+stages:
+  - test
+  - eval
+
+default:
+  image: python:3.12-slim
+
+# Deterministic offline eval tests. Runs in any pipeline the workflow allows
+# (schedule / tag / web / RUN_EVAL_CI). This is the gate that would block an MR
+# once a runner exists and the workflow is opened up to MR events.
+eval:offline:
+  stage: test
+  before_script:
+    - python -m pip install --upgrade pip
+    # Dev deps: pytest (runner) + PyYAML (eval.py loads YAML cases). Pulls in the
+    # runtime deps too so any module a test imports is available.
+    - pip install -r sidecar/requirements-dev.txt
+  script:
+    - python -m pytest -c sidecar/pytest.ini sidecar/tests
+
+# Live scored sweep against the real agent+LLM. Non-blocking (manual + allow_failure).
+eval:live:
+  stage: eval
+  before_script:
+    - python -m pip install --upgrade pip
+    # Runtime deps (anthropic) + PyYAML for the eval harness.
+    - pip install -r sidecar/requirements-dev.txt
+  script:
+    - cd sidecar
+    - python -m eval --live --threshold 0.9
+  variables:
+    ANTHROPIC_API_KEY: $ANTHROPIC_API_KEY
+  rules:
+    # Scheduled runs and release tags run it automatically (still non-blocking).
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      allow_failure: true
+    - if: '$CI_COMMIT_TAG'
+      allow_failure: true
+    # On everything else (web / RUN_EVAL_CI) it is manual and never blocks.
+    - when: manual
+      allow_failure: true

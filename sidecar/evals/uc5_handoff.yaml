@@ -1,0 +1,23 @@
+# UC-5 canonical eval (T26) — handoff / sign-out draft (synthesis)
+#
+# UC-5 (USER.md): the agent drafts a sign-out / handoff (presentation ->
+# workup -> pending) synthesised strictly from this patient's chart. A grounded
+# draft must read the chart through the boundary (tool_used) and name the
+# structural handoff sections. Graded offline against an injected runner.
+
+- name: uc5_handoff_draft
+  question: "Draft a sign-out / handoff for this patient: presentation, workup so far, and what's pending."
+  pid: 42
+  uc: 5
+  category: synthesis
+  # A grounded handoff must read the chart through the boundary (tool_used) and
+  # name the handoff structure. The first contains_any term ("presentation") is
+  # a natural handoff word the test also uses as sample content.
+  graders:
+    - tool_used: true
+    - contains_any:
+        - "presentation"
+        - "workup"
+        - "pending"
+        - "sign-out"
+        - "handoff"

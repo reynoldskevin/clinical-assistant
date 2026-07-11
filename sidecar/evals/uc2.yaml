@@ -1,0 +1,41 @@
+# UC-2 evals (T26) — focused clinical Q&A
+#
+# UC-2 (USER.md): a specific, ad-hoc factual question answered grounded strictly
+# in this patient's record. The grounded case must read the chart through the
+# boundary (tool_used) and name real clinical content; the missing-fact case
+# rewards an honest "not documented" over a fabricated specific value. Graded
+# offline against an injected runner, so the graders check observable behaviour.
+
+- name: uc2_focused_anticoagulant
+  question: "Is the patient on an anticoagulant or antiplatelet?"
+  pid: 42
+  uc: 2
+  category: grounding
+  # A grounded answer must read the medications through the boundary (tool_used)
+  # and name a real anticoagulant/antiplatelet term. The first contains_any term
+  # ("warfarin") is a natural clinical word the test also uses as sample content.
+  graders:
+    - tool_used: true
+    - contains_any:
+        - "warfarin"
+        - "apixaban"
+        - "rivaroxaban"
+        - "aspirin"
+        - "clopidogrel"
+        - "anticoagulant"
+        - "antiplatelet"
+
+- name: uc2_missing_specific_fact
+  question: "What is this patient's most recent INR value?"
+  pid: 42
+  uc: 2
+  category: absence
+  # The chart does NOT carry an INR result. The agent must say the value is not
+  # documented rather than invent a number. The first contains_any phrase ("not
+  # documented") is the honest hedge the test uses as sample content.
+  graders:
+    - contains_any:
+        - "not documented"
+        - "no record"
+        - "not on file"
+        - "not available"
