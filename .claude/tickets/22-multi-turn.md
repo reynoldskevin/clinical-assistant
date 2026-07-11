@@ -1,7 +1,7 @@
 ---
 id: 022
 title: Multi-turn conversation state (ephemeral, pid-scoped, TTL) (+ multi-turn test)
-status: tests-authored     # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
+status: ready-for-merge    # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
 depends_on: [021]
 branch: ticket/22-multi-turn
 base_branch: ticket/21-tool-chaining   # STACKED off T21 (unmerged) — shares agent.py/server.py; see skill decision #2

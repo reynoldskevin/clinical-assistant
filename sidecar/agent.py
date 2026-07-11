@@ -107,7 +107,23 @@ class ClaudeAgent:
 
     def run(self, question: str, pid: int) -> str:
         """Answer ``question`` about patient ``pid`` via the tool-use loop."""
-        messages: list[dict[str, Any]] = [{"role": "user", "content": question}]
+        return self.run_turn(question, pid)[0]
+
+    def run_turn(
+        self,
+        question: str,
+        pid: int,
+        history: list | None = None,
+    ) -> tuple[str, list]:
+        """Run one turn and return ``(answer, messages)``.
+
+        Starts from ``history`` (or a fresh conversation), appends ``question``
+        as the user turn, runs the same bounded tool-use loop as ``run``, and on
+        the final text answer appends the assistant turn so the returned message
+        list can seed the next turn. The pid is fixed for the session.
+        """
+        messages: list[dict[str, Any]] = list(history or [])
+        messages.append({"role": "user", "content": question})
 
         # Cumulative tool executions across the whole turn (every tool_result
         # appended counts once — success, failure, unknown, injected alike).
@@ -141,11 +157,18 @@ class ClaudeAgent:
             ]
 
             if not tool_uses:
-                return "".join(
+                answer = "".join(
                     block.text
                     for block in resp.content
                     if getattr(block, "type", None) == "text"
                 )
+                # Retain the final assistant turn so the next turn has context.
+                # Store the extracted text (not the raw SDK blocks) so the
+                # persisted history is plain, JSON-serializable data. This
+                # happens AFTER the last creator call, so it adds no creator call
+                # and does not alter any earlier ``creator.calls`` entry.
+                messages.append({"role": "assistant", "content": answer})
+                return answer, messages
 
             messages.append({"role": "assistant", "content": resp.content})
 
