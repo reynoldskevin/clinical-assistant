@@ -1,13 +1,13 @@
 ---
 id: 30
 title: Completeness-boundary disclosure — surface tool-budget truncation
-status: todo
+status: ready-for-merge
 depends_on: []
 branch: ticket/30-completeness-boundary-disclosure
 base_branch: main
 test_command: "python -m pytest sidecar/tests/test_completeness_disclosure.py"
 full_suite_command: "python -m pytest -c sidecar/pytest.ini sidecar/tests"
-attempts: 0
+attempts: 1
 ---
 
 ## Description
