@@ -1,13 +1,13 @@
 ---
 id: 29
 title: V7 — block status/negation contradictions of the record (verification gate)
-status: todo
+status: ready-for-merge
 depends_on: []
 branch: ticket/29-v7-status-contradiction
 base_branch: main
 test_command: "python -m pytest sidecar/tests/test_verification_status.py"
 full_suite_command: "python -m pytest -c sidecar/pytest.ini sidecar/tests"
-attempts: 0
+attempts: 1
 ---
 
 ## Description
