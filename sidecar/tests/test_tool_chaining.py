@@ -89,7 +89,10 @@ def test_max_tool_calls_budget_caps_executions_and_forces_final_answer():
     agent = ClaudeAgent(creator, RecordingBoundary({}), extra_tools=[spec], observer=obs, max_tool_calls=3)
     result = agent.run("keep going forever", pid=42)
 
-    assert result == "Final answer from what I have."
+    # startswith, not equality: T30 appends a completeness-boundary disclosure on
+    # the budget-exhausted path (this is that path). The clinical text is intact.
+    assert result.startswith("Final answer from what I have.")
+    assert "lookup limit" in result.lower()   # the truncation is surfaced, not silent
     # exactly the budget's worth of tool executions — no more
     assert obs.summary()["tool_calls"] == 3
     # the model calls that offered tools == budget; the final call offered none

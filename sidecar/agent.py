@@ -105,6 +105,16 @@ _SYSTEM_PROMPT = (
 )
 
 
+# Appended to the returned answer when the tool budget is exhausted before the
+# model produced a natural end_turn — i.e. the answer is forced on partial data.
+# Kept digit-free and citation-free so it never perturbs the grounding gate; it
+# is attached AFTER gating and only to the returned string, not persisted history.
+_TRUNCATION_NOTICE = (
+    "\n\n(Partial answer: I reached my lookup limit for this question and may "
+    "not have reviewed every record. Ask me to look further on any point.)"
+)
+
+
 class ClaudeAgent:
     """Runs a bounded, manual tool-use loop against an injected message-creator."""
 
@@ -277,7 +287,18 @@ class ClaudeAgent:
                 # persisted history is plain, JSON-serializable data. This
                 # happens AFTER the last creator call, so it adds no creator call
                 # and does not alter any earlier ``creator.calls`` entry.
+                # Persist the un-suffixed gated answer so re-seeding a future turn
+                # never accumulates truncation notices.
                 messages.append({"role": "assistant", "content": answer})
+                # Completeness-boundary disclosure: if this final answer was
+                # forced because the tool budget was spent (rather than a natural
+                # end_turn under budget), tell the caller. The notice is appended
+                # to the RETURNED string only (after gating, so grounding is
+                # untouched), and exactly one truncation event is emitted.
+                if tool_calls_made >= self._max_tool_calls:
+                    if on_event is not None:
+                        on_event({"type": "truncated", "reason": "tool_budget"})
+                    answer = answer + _TRUNCATION_NOTICE
                 return answer, messages
 
             messages.append({"role": "assistant", "content": resp.content})
