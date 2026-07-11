@@ -1,7 +1,7 @@
 ---
 id: 025
 title: SSE streaming — live status events + buffered, gated answer (verify/stream reconciliation)
-status: tests-authored     # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
+status: ready-for-merge    # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
 depends_on: [024]
 branch: ticket/25-sse-streaming
 base_branch: main          # T24 merged; branch off main
