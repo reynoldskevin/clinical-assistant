@@ -1,7 +1,7 @@
 ---
 id: 026
 title: Eval coverage sweep (UC-1..6 + all categories) + hybrid CI/release gate
-status: tests-authored     # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
+status: ready-for-merge    # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
 depends_on: [014, 015, 024]
 branch: ticket/26-eval-sweep-ci-gate
 base_branch: main          # T25 merged; branch off main
