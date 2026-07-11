@@ -1,7 +1,7 @@
 ---
 id: 023
 title: Verification gate — grounding (V1 citation-validity, V2 claim-grounding)
-status: tests-authored     # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
+status: ready-for-merge    # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
 depends_on: [022]
 branch: ticket/23-verification-grounding
 base_branch: main          # T22 merged; branch off main
