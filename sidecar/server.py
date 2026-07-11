@@ -14,6 +14,9 @@ import contextlib
 import json
 import logging
 import os
+import queue
+import threading
+from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 
@@ -60,37 +63,47 @@ def _run_agent(
     store: ConversationStore | None,
     conversation_id: Any,
     multi_turn: bool,
+    on_event: Callable[[dict[str, Any]], None] | None = None,
 ) -> tuple[str, list[Any] | None]:
     """Run one agent turn, returning ``(answer, new_history)``.
 
     ``new_history`` is the updated conversation history for the multi-turn path
     (so the caller can persist it), or ``None`` for the stateless path.
+
+    When ``on_event`` is supplied (the streaming path) both the multi-turn and
+    stateless branches go through ``run_turn`` so tool executions emit live
+    status events either way — the stateless branch just starts from an empty
+    history and discards the returned history. With ``on_event=None`` (the
+    ``process_ask`` path) the stateless branch keeps using ``run`` byte-for-byte.
     """
     if multi_turn:
         assert store is not None  # multi_turn implies a store; narrows the type
         history = store.history(conversation_id, pid)
-        answer, new_history = agent.run_turn(question, pid, history)
+        if on_event is not None:
+            answer, new_history = agent.run_turn(question, pid, history, on_event=on_event)
+        else:
+            answer, new_history = agent.run_turn(question, pid, history)
         return answer, new_history
+    if on_event is not None:
+        answer, _ = agent.run_turn(question, pid, None, on_event=on_event)
+        return answer, None
     return agent.run(question, pid), None
 
 
-def process_ask(
+# A parsed, valid request: (jwt, pid, question, conversation_id, multi_turn, metadata).
+ParsedRequest = tuple[str, int, str, Any, bool, dict[str, Any]]
+
+
+def _parse_request(
     authorization: str,
     raw_body: bytes,
-    agent_builder: AgentBuilder,
-    store: ConversationStore | None = None,
-    tracer: Any = None,
-) -> tuple[int, dict[str, Any]]:
-    """Validate a /ask request and run the agent. Returns (status, json_body).
+    store: ConversationStore | None,
+) -> tuple[int, dict[str, Any]] | ParsedRequest:
+    """Validate a request's auth + body, shared by ``process_ask``/``stream_ask``.
 
-    Pure and side-effect-free apart from the injected agent and (optional)
-    conversation store: no sockets, so it is directly unit-testable. Never
-    surfaces internal error detail to the caller.
-
-    When ``store`` is supplied and the body carries a non-empty
-    ``conversation_id``, the pid-scoped history is loaded, the turn continues it
-    via ``run_turn``, and the updated history is persisted. Otherwise the request
-    is stateless (``run``), keeping the 3-arg callers backward compatible.
+    Returns a ``(status, {"error": ...})`` tuple on failure (matching
+    ``process_ask``'s error contract), or the parsed request tuple on success.
+    Callers distinguish the two by length: an error tuple has two elements.
     """
     if not authorization.startswith(_BEARER_PREFIX):
         return 401, {"error": "missing bearer token"}
@@ -117,6 +130,33 @@ def process_ask(
     metadata: dict[str, Any] = {"pid": pid}
     if multi_turn:
         metadata["conversation_id"] = conversation_id
+
+    return jwt, pid, question, conversation_id, multi_turn, metadata
+
+
+def process_ask(
+    authorization: str,
+    raw_body: bytes,
+    agent_builder: AgentBuilder,
+    store: ConversationStore | None = None,
+    tracer: Any = None,
+) -> tuple[int, dict[str, Any]]:
+    """Validate a /ask request and run the agent. Returns (status, json_body).
+
+    Pure and side-effect-free apart from the injected agent and (optional)
+    conversation store: no sockets, so it is directly unit-testable. Never
+    surfaces internal error detail to the caller.
+
+    When ``store`` is supplied and the body carries a non-empty
+    ``conversation_id``, the pid-scoped history is loaded, the turn continues it
+    via ``run_turn``, and the updated history is persisted. Otherwise the request
+    is stateless (``run``), keeping the 3-arg callers backward compatible.
+    """
+    parsed = _parse_request(authorization, raw_body, store)
+    if len(parsed) == 2:
+        status, body = parsed  # type: ignore[misc]
+        return status, body
+    jwt, pid, question, conversation_id, multi_turn, metadata = parsed  # type: ignore[misc]
 
     try:
         agent = agent_builder(pid, jwt)
@@ -165,6 +205,124 @@ def process_ask(
         logging.getLogger("sidecar").info("agent turn: pid=%s trace=%s", pid, json.dumps(summarize()))
 
     return 200, {"answer": answer}
+
+
+def _sse_frame(name: str, data: dict[str, Any]) -> bytes:
+    """Format a single Server-Sent Events frame as utf-8 bytes."""
+    return f"event: {name}\ndata: {json.dumps(data)}\n\n".encode("utf-8")
+
+
+def stream_ask(
+    authorization: str,
+    raw_body: bytes,
+    agent_builder: AgentBuilder,
+    store: ConversationStore | None = None,
+    tracer: Any = None,
+) -> Iterator[bytes]:
+    """Validate a /ask/stream request and yield SSE frames for the turn.
+
+    Pure and socket-free (the caller adapts it to the HTTP response). Reuses the
+    exact validation of ``process_ask`` via ``_parse_request``. Status/tool
+    events stream live during the turn; the answer text is buffered, run through
+    the verification gate (inside ``run_turn``), and only the gated answer is
+    emitted — so no unverified clinical content ever reaches the client. Never
+    surfaces internal error detail.
+    """
+    parsed = _parse_request(authorization, raw_body, store)
+    if len(parsed) == 2:
+        status, body = parsed  # type: ignore[misc]
+        yield _sse_frame("error", {"status": status, "error": body["error"]})
+        return
+    jwt, pid, question, conversation_id, multi_turn, metadata = parsed  # type: ignore[misc]
+
+    yield _sse_frame("status", {"stage": "start"})
+
+    # Threaded producer/consumer bridge: the agent turn runs on a worker thread
+    # and pushes each tool event onto ``q`` the instant it fires (via on_event),
+    # so this generator can yield the corresponding ``tool`` frame live — while
+    # the model calls and the verification gate are still blocking. The answer
+    # text stays buffered inside run_turn, is gated once on the complete draft,
+    # and is emitted last in a single ``answer`` frame; no answer text ever flows
+    # through on_event. A ``("done", None)`` sentinel signals the worker finished,
+    # so every real tool event is yielded before the answer frame.
+    q: queue.Queue[tuple[str, Any]] = queue.Queue()
+    on_event = lambda ev: q.put(("event", ev))  # noqa: E731
+    result: dict[str, Any] = {}
+
+    # Enter the span once, around the single agent call site in the worker; a
+    # span-lifecycle failure must never re-run the agent or break the stream.
+    cm = _span(tracer, metadata)
+    try:
+        cm.__enter__()
+        entered = True
+    except Exception:  # noqa: BLE001 - a span enter error must not break the request
+        logging.getLogger("sidecar").exception("span __enter__ failed; continuing without it")
+        entered = False
+
+    def _worker() -> None:
+        try:
+            # Build the agent inside the guarded worker so a builder failure is
+            # masked to an ``error`` frame too (parity with process_ask), rather
+            # than raising on the HTTP thread after the status frame is flushed.
+            agent = agent_builder(pid, jwt)
+            result["agent"] = agent  # for the post-run observability trace
+            answer, new_history = _run_agent(
+                agent, question, pid, store, conversation_id, multi_turn, on_event=on_event
+            )
+            result["answer"] = answer
+            result["history"] = new_history
+        except BaseException as e:  # noqa: BLE001 - capture; never crash the worker thread
+            result["error"] = e
+        finally:
+            q.put(("done", None))
+
+    worker = threading.Thread(target=_worker, daemon=True)
+    worker.start()
+
+    # Drain the queue, yielding tool frames live until the worker's sentinel.
+    while True:
+        kind, payload = q.get()
+        if kind == "done":
+            break
+        yield _sse_frame("tool", payload)
+
+    worker.join()
+
+    # Close the span (swallowing exit errors) now that the single agent call has
+    # completed, regardless of success or failure.
+    if entered:
+        exc = result.get("error")
+        try:
+            if exc is not None:
+                cm.__exit__(type(exc), exc, exc.__traceback__)
+            else:
+                cm.__exit__(None, None, None)
+        except Exception:  # noqa: BLE001 - a span exit error must not mask/break anything
+            logging.getLogger("sidecar").exception("span __exit__ failed; ignoring")
+
+    if result.get("error") is not None:
+        # Never leak internal detail (API errors, boundary failures) to the browser.
+        logging.getLogger("sidecar").exception(
+            "agent turn failed", extra={"pid": pid}, exc_info=result["error"]
+        )
+        yield _sse_frame("error", {"error": "the assistant is unavailable"})
+        return
+
+    answer = result["answer"]
+    new_history = result.get("history")
+    if multi_turn and new_history is not None:
+        assert store is not None
+        store.remember(conversation_id, pid, new_history)
+
+    # Emit the turn's observability trace (tokens, cost, tool calls). Guarded so
+    # non-instrumented agents (e.g. test fakes) don't error.
+    observer = getattr(result.get("agent"), "observer", None)
+    summarize = getattr(observer, "summary", None)
+    if callable(summarize):
+        logging.getLogger("sidecar").info("agent turn: pid=%s trace=%s", pid, json.dumps(summarize()))
+
+    yield _sse_frame("answer", {"answer": answer})
+    yield _sse_frame("done", {"ok": True})
 
 
 def default_agent_builder(
@@ -235,13 +393,28 @@ def make_handler(
             self.end_headers()
 
         def do_POST(self) -> None:  # noqa: N802 (http.server naming)
-            if self.path.rstrip("/") != "/ask":
+            path = self.path.rstrip("/")
+            if path not in ("/ask", "/ask/stream"):
                 self._send_json(404, {"error": "not found"})
                 return
             length = int(self.headers.get("Content-Length", "0") or "0")
             raw_body = self.rfile.read(length) if length > 0 else b""
+            authorization = self.headers.get("Authorization", "")
+
+            if path == "/ask/stream":
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Connection", "keep-alive")
+                self._cors()
+                self.end_headers()
+                for frame in stream_ask(authorization, raw_body, agent_builder, store, tracer):
+                    self.wfile.write(frame)
+                    self.wfile.flush()
+                return
+
             status, body = process_ask(
-                self.headers.get("Authorization", ""),
+                authorization,
                 raw_body,
                 agent_builder,
                 store,

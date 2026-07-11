@@ -37,6 +37,9 @@
     // their own boundary service.
     var tokenUrl = new URL('token.php', document.currentScript ? document.currentScript.src : window.location.href).href;
     var sidecarUrl = root.dataset.sidecarUrl || '/ai-agent-sidecar/ask';
+    // The SSE endpoint is derived from the same base as the buffered /ask URL, so
+    // a deployment that overrides data-sidecar-url need only set it once.
+    var streamUrl = sidecarUrl.replace(/\/ask\/?$/, '/ask/stream');
 
     // One conversation id per card instance (per page load), sent with every
     // question so the sidecar can carry context across follow-ups within its
@@ -75,14 +78,24 @@
         }
     }
 
-    // Show the "Thinking..." status with an animated spinner beside it.
-    function showThinking() {
+    // Show a live status line ("Thinking..." by default) with a spinner beside it.
+    function showThinking(note) {
         answer.textContent = '';
         var spinner = document.createElement('span');
         spinner.className = 'oe-ai-agent-spinner';
         spinner.setAttribute('aria-hidden', 'true');
         answer.appendChild(spinner);
-        answer.appendChild(document.createTextNode('Thinking...'));
+        answer.appendChild(document.createTextNode(note || 'Thinking...'));
+    }
+
+    // Turn a tool name (e.g. "get_medications") into a short, friendly progress
+    // note (e.g. "Reading medications..."). Purely cosmetic; falls back cleanly.
+    function toolNote(name) {
+        var readable = String(name || '')
+            .replace(/^(get|list|search)_/, '')
+            .replace(/_/g, ' ')
+            .trim();
+        return readable ? ('Reading ' + readable + '...') : 'Working...';
     }
 
     function mintToken() {
@@ -106,8 +119,31 @@
         });
     }
 
+    // Parse one SSE frame block ("event: X\ndata: {...}") into {event, data}.
+    function parseFrame(block) {
+        var event = null;
+        var data = null;
+        block.split('\n').forEach(function (line) {
+            if (line.indexOf('event:') === 0) {
+                event = line.slice('event:'.length).trim();
+            } else if (line.indexOf('data:') === 0) {
+                var raw = line.slice('data:'.length).trim();
+                try {
+                    data = JSON.parse(raw);
+                } catch (e) {
+                    data = null;
+                }
+            }
+        });
+        return { event: event, data: data };
+    }
+
+    // POST to the SSE endpoint and consume the response body incrementally.
+    // Status/tool frames update the live "thinking" line; the single gated
+    // answer frame is rendered through the existing markdown path; an error
+    // frame surfaces the friendly failure. Resolves once the stream ends.
     function askSidecar(jwt, text) {
-        return fetch(sidecarUrl, {
+        return fetch(streamUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -119,10 +155,55 @@
                 conversation_id: conversationId
             })
         }).then(function (res) {
-            if (!res.ok) {
+            if (!res.ok || !res.body) {
                 throw new Error('sidecar request failed');
             }
-            return res.json();
+            var reader = res.body.getReader();
+            var decoder = new TextDecoder();
+            var buffer = '';
+
+            function handleFrame(frame) {
+                if (frame.event === 'status') {
+                    showThinking('Thinking...');
+                } else if (frame.event === 'tool') {
+                    showThinking(toolNote(frame.data && frame.data.name));
+                } else if (frame.event === 'answer') {
+                    renderAnswer(
+                        (frame.data && frame.data.answer)
+                            ? frame.data.answer
+                            : 'No answer returned.'
+                    );
+                } else if (frame.event === 'error') {
+                    // Never surface internal detail; a friendly message only.
+                    answer.textContent = 'The assistant is unavailable right now.';
+                }
+            }
+
+            function pump() {
+                return reader.read().then(function (result) {
+                    if (result.value) {
+                        buffer += decoder.decode(result.value, { stream: true });
+                        var parts = buffer.split('\n\n');
+                        // Keep the last, possibly-incomplete segment in the buffer.
+                        buffer = parts.pop();
+                        parts.forEach(function (block) {
+                            if (block.trim() !== '') {
+                                handleFrame(parseFrame(block));
+                            }
+                        });
+                    }
+                    if (result.done) {
+                        var tail = buffer.trim();
+                        if (tail !== '') {
+                            handleFrame(parseFrame(tail));
+                        }
+                        return;
+                    }
+                    return pump();
+                });
+            }
+
+            return pump();
         });
     }
 
@@ -294,9 +375,9 @@
         showThinking();
         mintToken().then(function (jwt) {
             return askSidecar(jwt, text);
-        }).then(function (data) {
-            renderAnswer((data && data.answer) ? data.answer : 'No answer returned.');
-            // Clear the question but keep focus, ready for the next one.
+        }).then(function () {
+            // The answer (or an error frame) was already rendered as the stream
+            // was consumed. Clear the question but keep focus for the next one.
             question.value = '';
         }).catch(function () {
             // Never surface internal error detail to the clinician. Leave the
