@@ -23,9 +23,11 @@ declare(strict_types=1);
 // authenticated this bootstrap itself denies the request (fail closed).
 require_once __DIR__ . '/../../../../globals.php';
 
+use OpenEMR\Common\Acl\AclMain;
 use OpenEMR\Common\Csrf\CsrfUtils;
 use OpenEMR\Common\Logging\SystemLogger;
 use OpenEMR\Common\Session\SessionWrapperFactory;
+use OpenEMR\Modules\AiAgent\Auth\ClinicalAccessPolicy;
 use OpenEMR\Modules\AiAgent\Auth\TokenMinter;
 use OpenEMR\Modules\AiAgent\Support\Config;
 use Psr\Clock\ClockInterface;
@@ -56,13 +58,20 @@ if (!CsrfUtils::verifyCsrfToken($_POST['csrf_token'] ?? '', session: $session)) 
     $fail(403, 'Invalid CSRF token');
 }
 
-// 3. Patient scope from the session.
+// 3. Clinical-read authorization gate. The agent must never read more than the
+//    logged-in human could, so delegate to OpenEMR's own ACL before minting.
+$policy = new ClinicalAccessPolicy(AclMain::aclCheckCore(...));
+if (!$policy->mayReadClinical($clinicianUsername)) {
+    $fail(403, 'Not authorized');
+}
+
+// 4. Patient scope from the session.
 $pid = (int) $session->get('pid');
 if ($pid <= 0) {
     $fail(400, 'No patient in context');
 }
 
-// 4. Signing key from server configuration (never sent to the browser).
+// 5. Signing key from server configuration (never sent to the browser).
 $signingKey = Config::signingKey();
 if ($signingKey === '') {
     (new SystemLogger())->error('AI agent signing key is not configured');
