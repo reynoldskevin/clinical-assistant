@@ -60,6 +60,23 @@ def _collect_refs(data: Any) -> set[str]:
     return refs
 
 
+def _collect_data(data: Any) -> dict[str, dict[str, Any]]:
+    """Map each tool-result ``ref`` to its record dict.
+
+    Mirrors :func:`_collect_refs` but keeps the whole row keyed by its ``ref``,
+    so the grounding gate's V3 contradiction check can compare a cited med's
+    record against the claim made about it.
+    """
+    out: dict[str, dict[str, Any]] = {}
+    rows = data if isinstance(data, list) else [data]
+    for row in rows:
+        if isinstance(row, dict):
+            ref = row.get("ref")
+            if isinstance(ref, str):
+                out[ref] = row
+    return out
+
+
 _SYSTEM_PROMPT = (
     "You are a clinical assistant embedded in an electronic health record. "
     "Answer questions about the current patient concisely and accurately, "
@@ -140,7 +157,12 @@ class ClaudeAgent:
                 return spec["handler"]
         return None
 
-    def _gate_final_answer(self, draft: str, retrieved_refs: set[str]) -> str:
+    def _gate_final_answer(
+        self,
+        draft: str,
+        retrieved_refs: set[str],
+        retrieved_data: dict[str, dict[str, Any]] | None = None,
+    ) -> str:
         """Apply the grounding gate iff the draft used the §4 citation format.
 
         If ``draft`` carries a fenced ```citations block, parse it, remove the
@@ -162,7 +184,9 @@ class ClaudeAgent:
             return draft
 
         display_text = (draft[: match.start()] + draft[match.end():]).strip()
-        result = VerificationGate().verify(display_text, citations, retrieved_refs)
+        result = VerificationGate().verify(
+            display_text, citations, retrieved_refs, retrieved_data
+        )
         return result["rendered_answer"]
 
     def run(self, question: str, pid: int) -> str:
@@ -191,6 +215,9 @@ class ClaudeAgent:
         # Every ``ref`` value seen in tool-result data this turn. Used by the
         # grounding gate to distinguish cited-from-record from fabricated refs.
         retrieved_refs: set[str] = set()
+        # Every ``ref -> record`` seen in tool-result data this turn. Feeds the
+        # gate's V3 contradiction check (a cited med must be that record).
+        retrieved_data: dict[str, dict[str, Any]] = {}
         # Derive the iteration bound from the budget so the final no-tools call
         # (made once the budget is spent) always fits before the safety cap.
         max_iterations = self._max_tool_calls + 2
@@ -225,7 +252,7 @@ class ClaudeAgent:
                     for block in resp.content
                     if getattr(block, "type", None) == "text"
                 )
-                answer = self._gate_final_answer(draft, retrieved_refs)
+                answer = self._gate_final_answer(draft, retrieved_refs, retrieved_data)
                 # Retain the final assistant turn so the next turn has context.
                 # Store the extracted text (not the raw SDK blocks) so the
                 # persisted history is plain, JSON-serializable data. This
@@ -258,6 +285,7 @@ class ClaudeAgent:
                         )
                     else:
                         retrieved_refs.update(_collect_refs(summary))
+                        retrieved_data.update(_collect_data(summary))
                         self._observer.record_tool_call("get_patient_summary", True)
                         tool_results.append(
                             {
@@ -284,6 +312,7 @@ class ClaudeAgent:
                         )
                     else:
                         retrieved_refs.update(_collect_refs(result))
+                        retrieved_data.update(_collect_data(result))
                         self._observer.record_tool_call(block.name, True)
                         tool_results.append(
                             {
