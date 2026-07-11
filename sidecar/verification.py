@@ -31,6 +31,16 @@ is never shown:
 * **V6 (patient scope, BLOCKING):** the answer must not leak raw identifiers. An
   SSN pattern or an ``MRN``/``medical record number`` label followed by digits
   raises an ``out_of_scope_phi`` flag and blocks.
+* **V7 (status/negation contradiction, BLOCKING):** a citation to a
+  medication/allergy record (a ``prescription:`` or ``list:`` ref) whose record
+  is known this turn and is currently ``active`` (and *not* the ambiguous
+  ``status_conflict`` stale-active case) must not be described as
+  inactive/resolved/negated. If the sentence carrying the ``[Sn]`` marker
+  contains an inactive/negated status phrase (e.g. "resolved", "discontinued",
+  "no longer"), the assertion contradicts the chart — a ``contradicts_status``
+  flag is raised and the answer is blocked. When the record is inactive, or the
+  stale-active ``status_conflict`` flag is set, the statement is defensible and
+  V7 does not fire.
 
 **Deferred (NOT implemented — require clinical sign-off):** V4 (physiologic-range
 checks) and V5 (order/dose classifier). They need validated ranges / a validated
@@ -66,6 +76,16 @@ _DECIMAL_DOT_PLACEHOLDER = "\x00"
 # Ref prefixes that denote a medication or allergy record — the only refs V3
 # (contradiction) applies to.
 _MED_ALLERGY_PREFIXES = ("prescription:", "list:")
+
+# V7 inactive/negated status phrases. A record the chart marks currently active
+# must not be described with any of these. Kept deliberately tight — whole-word
+# where a bare stem could false-positive (``stopped`` inside ``unstopped`` etc.)
+# — and pointedly excludes positive/current phrasing like "actively on".
+_INACTIVE_STATUS_RE = re.compile(
+    r"\b(?:resolved|inactive|discontinued|no longer|no history of|"
+    r"not taking|not currently|not active|stopped taking|stopped)\b",
+    re.IGNORECASE,
+)
 
 # V6 identifier patterns. An SSN (###-##-####) or an MRN / "medical record
 # number" label followed by punctuation/whitespace then digits.
@@ -116,6 +136,9 @@ class VerificationGate:
         blocking_flags: list[dict[str, Any]] = []
         blocking_flags += self._check_contradiction(draft, citations, retrieved_data)
         blocking_flags += self._check_identifier_leak(draft)
+        blocking_flags += self._check_status_contradiction(
+            draft, citations, retrieved_data
+        )
         if blocking_flags:
             return {
                 "verdict": "blocked",
@@ -185,6 +208,43 @@ class VerificationGate:
             if first_token not in sentence.lower():
                 flags.append(
                     {"code": "contradicts_record", "ref": ref, "action": "blocked"}
+                )
+        return flags
+
+    @staticmethod
+    def _check_status_contradiction(
+        draft: str,
+        citations: list[dict[str, Any]],
+        retrieved_data: dict[str, dict[str, Any]] | None,
+    ) -> list[dict[str, Any]]:
+        """V7 (BLOCKING): don't call a currently-active record inactive/resolved.
+
+        For each citation to a ``prescription:``/``list:`` ref whose record is
+        known and currently ``active`` — excluding the ambiguous stale-active
+        ``status_conflict`` case, where hedging toward "resolved" is defensible —
+        the sentence carrying that ``[Sn]`` marker must not contain an
+        inactive/negated status phrase. If it does, the assertion contradicts the
+        chart and a blocking ``contradicts_status`` flag is raised.
+        """
+        data = retrieved_data or {}
+        flags: list[dict[str, Any]] = []
+        for citation in citations:
+            ref = citation["ref"]
+            if not ref.startswith(_MED_ALLERGY_PREFIXES):
+                continue
+            record = data.get(ref)
+            if record is None:
+                continue
+            # Only fire for genuinely-active records that are not the ambiguous
+            # stale-active (end_date present) case.
+            if record.get("active") is not True or record.get("status_conflict"):
+                continue
+            sentence = VerificationGate._sentence_with_marker(draft, citation["n"])
+            if sentence is None:
+                continue
+            if _INACTIVE_STATUS_RE.search(sentence):
+                flags.append(
+                    {"code": "contradicts_status", "ref": ref, "action": "blocked"}
                 )
         return flags
 
