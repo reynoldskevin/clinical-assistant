@@ -140,3 +140,25 @@ def test_agent_returns_a_format_less_answer_unchanged():
     creator = ScriptedCreator([_resp([_text("Your blood pressure is 120/80.")], "end_turn")])
     agent = ClaudeAgent(creator, RecordingBoundary({}))
     assert agent.run("bp?", pid=42) == "Your blood pressure is 120/80."
+
+
+# --- decimal clinical values must not be mis-split (regression) ---
+
+def test_grounded_decimal_value_is_not_split_or_falsely_demoted():
+    # "2.5" must not be split at the decimal point into a bogus "…2." sentence.
+    v = VerificationGate().verify(
+        "The INR was 2.5 [S1].",
+        [{"n": 1, "ref": "result:1"}],
+        {"result:1"},
+    )
+    assert v["verdict"] == "pass"
+    assert v["flags"] == []
+    assert v["rendered_answer"] == "The INR was 2.5 [S1]."
+
+
+def test_ungrounded_decimal_claim_is_demoted_without_corrupting_the_value():
+    v = VerificationGate().verify("The HbA1c was 6.5%.", [], set())
+    assert v["verdict"] == "pass_with_flags"
+    assert any(f["code"] == "ungrounded_claim" for f in v["flags"])
+    assert "not supported by the record" in v["rendered_answer"]
+    assert "6.5" in v["rendered_answer"]  # the decimal value is preserved, not mangled to "6 (...).5"
