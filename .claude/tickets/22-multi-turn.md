@@ -34,6 +34,11 @@ window so "is that normal?" resolves against the prior answer, then expires.
   Without a store (or conversation_id) it stays stateless via `run()` — so the locked
   `test_server.py` (3-arg calls) is unaffected. `main()` wires a `ConversationStore`.
 
+- **Widget (`agent-widget.js`) — client half:** generate one `conversation_id` per
+  card instance (per page load) and send it with every `/ask` POST, so follow-up
+  questions in the card actually carry context. It's ephemeral (not persisted client
+  side) and pid-scoped server-side.
+
 Note: the eval harness is single-turn; the "multi-turn case" here is a behavioural
 unit test (store + agent continuation + server round-trip), not a YAML eval case.
 

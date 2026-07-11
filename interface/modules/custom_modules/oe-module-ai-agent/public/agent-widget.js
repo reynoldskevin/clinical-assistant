@@ -38,6 +38,13 @@
     var tokenUrl = new URL('token.php', document.currentScript ? document.currentScript.src : window.location.href).href;
     var sidecarUrl = root.dataset.sidecarUrl || '/ai-agent-sidecar/ask';
 
+    // One conversation id per card instance (per page load), sent with every
+    // question so the sidecar can carry context across follow-ups within its
+    // short TTL. It is ephemeral and pid-scoped server-side; not persisted here.
+    var conversationId = (window.crypto && typeof crypto.randomUUID === 'function')
+        ? crypto.randomUUID()
+        : ('oe-ai-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2));
+
     // The CSRF token is embedded server-side on the card (data-csrf); fall back
     // to OpenEMR's page global (csrf_token_js) where one is present.
     var csrfToken = root.dataset.csrf
@@ -106,7 +113,11 @@
                 'Content-Type': 'application/json',
                 'Authorization': 'Bearer ' + jwt
             },
-            body: JSON.stringify({ pid: parseInt(root.dataset.pid, 10), question: text })
+            body: JSON.stringify({
+                pid: parseInt(root.dataset.pid, 10),
+                question: text,
+                conversation_id: conversationId
+            })
         }).then(function (res) {
             if (!res.ok) {
                 throw new Error('sidecar request failed');
