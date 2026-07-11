@@ -1,7 +1,7 @@
 ---
 id: 024
 title: Verification gate — constraints (V3 contradiction + V6 patient-scope); V4/V5 deferred
-status: tests-authored     # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
+status: ready-for-merge    # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
 depends_on: [023]
 branch: ticket/24-verification-constraints
 base_branch: ticket/23-verification-grounding   # STACKED off T23 (unmerged) — shares verification.py/agent.py; see skill decision #2
