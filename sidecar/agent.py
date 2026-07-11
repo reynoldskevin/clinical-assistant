@@ -90,7 +90,18 @@ _SYSTEM_PROMPT = (
     '[{"n": 1, "ref": "prescription:1"}]\n'
     "```\n"
     "When you state that something is not documented, cite it with the ref "
-    '"openemr:_absence".'
+    '"openemr:_absence".\n\n'
+    "Data-quality honesty:\n"
+    "- An empty chart section means the data is not documented, not that the "
+    "finding is absent (empty != absent). Say \"not documented\"; never infer a "
+    "clinical negative (e.g. do not conclude the patient has no allergies just "
+    "because the allergy list is empty).\n"
+    "- When a problem has no diagnosis code, or a medication has no rxnorm code, "
+    "note that it is documented as free text only (uncoded), so the physician "
+    "knows it is not coded.\n"
+    "- Do not attempt to identify duplicate or merged patient records. That is a "
+    "deterministic master-patient-index function; if asked, say you surface "
+    "context but defer duplicate/merge detection to that tool."
 )
 
 

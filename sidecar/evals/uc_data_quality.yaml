@@ -1,0 +1,31 @@
+# Data-quality evals (T27) — uncoded / free-text-only problems & meds.
+#
+# USER.md §6: uncoded / free-text-only entries are common in ED records. The
+# summary payload already carries the coding field per section
+# (problems.diagnosis, medications.rxnorm_drugcode); when it is empty the entry
+# is documented only as free text. A grounded answer READS the chart (tool_used)
+# and FLAGS that free-text/uncoded status so the physician knows it is not coded,
+# rather than presenting it as a normal coded diagnosis. Graded offline against an
+# injected runner, so the grader checks observable behaviour: whether the boundary
+# tool was used and whether the answer flags the uncoded status.
+#
+# gap/absence ("not documented") and stale-active honesty are NOT re-tested here —
+# they are already covered by the verification gate (openemr:_absence, V2) and by
+# uc1/uc2 (absence) and uc6 (stale-active). Duplicate detection is deferred (MPI).
+
+- name: dq_free_text_only_flagged
+  question: "Is the patient's atrial fibrillation problem a coded diagnosis, or only documented as free text?"
+  pid: 42
+  uc: 2
+  category: data_quality
+  # A grounded answer reads the chart and flags the uncoded / free-text status.
+  # The first contains_any phrase ("free text only") is the flag the test reuses
+  # as sample content.
+  graders:
+    - tool_used: true
+    - contains_any:
+        - "free text only"
+        - "free-text only"
+        - "uncoded"
+        - "not coded"
+        - "no diagnosis code"
