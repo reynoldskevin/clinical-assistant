@@ -1,7 +1,7 @@
 ---
 id: 021
 title: Tool-chaining loop + max-tool-calls budget (+ chaining eval case)
-status: tests-authored     # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
+status: ready-for-merge    # todo | tests-authored | implementing | reviewing | regression | ready-for-merge | blocked
 depends_on: [017]
 branch: ticket/21-tool-chaining
 base_branch: main          # branch off main (T20 merged); see skill decision #2

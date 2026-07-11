@@ -30,7 +30,9 @@ Boundary = Callable[[int], dict[str, Any]]
 # the model's tool_input is passed through but can never redirect the pid.
 ToolSpec = dict[str, Any]
 
-_MAX_ITERATIONS = 8
+# Default per-turn budget on the total number of tool executions. This bounds a
+# runaway chain independently of (and more strictly than) the raw iteration cap.
+_DEFAULT_MAX_TOOL_CALLS = 8
 
 _SYSTEM_PROMPT = (
     "You are a clinical assistant embedded in an electronic health record. "
@@ -51,6 +53,7 @@ class ClaudeAgent:
         max_tokens: int = 4096,
         observer: Any = None,
         extra_tools: list[ToolSpec] | None = None,
+        max_tool_calls: int = _DEFAULT_MAX_TOOL_CALLS,
     ) -> None:
         self._message_creator = message_creator
         self._boundary = boundary
@@ -59,6 +62,10 @@ class ClaudeAgent:
         self._observer = observer or NullObserver()
         # Injectable tool registry keyed by name, each carrying its handler.
         self._extra_tools = list(extra_tools or [])
+        # Cap on the total number of tool executions per turn. Once this many
+        # tools have run, the loop stops offering tools and forces a final
+        # text answer from whatever the model has already gathered.
+        self._max_tool_calls = max_tool_calls
 
     @property
     def observer(self) -> Any:
@@ -102,12 +109,22 @@ class ClaudeAgent:
         """Answer ``question`` about patient ``pid`` via the tool-use loop."""
         messages: list[dict[str, Any]] = [{"role": "user", "content": question}]
 
-        for _ in range(_MAX_ITERATIONS):
+        # Cumulative tool executions across the whole turn (every tool_result
+        # appended counts once — success, failure, unknown, injected alike).
+        tool_calls_made = 0
+        # Derive the iteration bound from the budget so the final no-tools call
+        # (made once the budget is spent) always fits before the safety cap.
+        max_iterations = self._max_tool_calls + 2
+
+        for _ in range(max_iterations):
+            # Offer tools only while under budget; once spent, pass an empty
+            # list so the model cannot call more tools and must answer as text.
+            offer_tools = self._tools() if tool_calls_made < self._max_tool_calls else []
             resp = self._message_creator(
                 model=self._model,
                 max_tokens=self._max_tokens,
                 system=_SYSTEM_PROMPT,
-                tools=self._tools(),
+                tools=offer_tools,
                 messages=messages,
             )
 
@@ -134,6 +151,8 @@ class ClaudeAgent:
 
             tool_results: list[dict[str, Any]] = []
             for block in tool_uses:
+                # Every handled tool_use block counts against the budget.
+                tool_calls_made += 1
                 if block.name == "get_patient_summary":
                     # Fixed session pid — ignore any model-supplied input.
                     try:
@@ -198,5 +217,5 @@ class ClaudeAgent:
             messages.append({"role": "user", "content": tool_results})
 
         raise RuntimeError(
-            f"Tool-use loop exceeded {_MAX_ITERATIONS} iterations without a final answer."
+            f"Tool-use loop exceeded {max_iterations} iterations without a final answer."
         )

@@ -91,6 +91,8 @@ def default_agent_builder(
     swapped for ``read.php``.
     """
     chart_url = read_url or summary_url.replace("summary.php", "read.php")
+    # Per-turn tool-execution budget; overridable via env (defaults to 8).
+    max_tool_calls = int(os.environ.get("OE_AI_AGENT_MAX_TOOL_CALLS") or "8")
 
     def build(pid: int, jwt: str) -> ClaudeAgent:
         boundary = build_boundary(summary_url, jwt)
@@ -105,6 +107,7 @@ def default_agent_builder(
                 build_medications_tool(chart_boundary),
                 build_search_tool(chart_boundary),
             ],
+            max_tool_calls=max_tool_calls,
         )
 
     return build
