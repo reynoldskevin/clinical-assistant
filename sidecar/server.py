@@ -402,15 +402,27 @@ def make_handler(
             authorization = self.headers.get("Authorization", "")
 
             if path == "/ask/stream":
+                # This streamed response has no Content-Length and is not chunked,
+                # so end-of-body is signalled by closing the connection. Declare
+                # ``Connection: close`` (and force the server to actually close)
+                # so the browser reads a clean EOF and the fetch stream resolves;
+                # a lingering ``keep-alive`` here makes strict clients treat the
+                # socket close as a truncated/errored response.
+                self.close_connection = True
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
                 self.send_header("Cache-Control", "no-cache")
-                self.send_header("Connection", "keep-alive")
+                self.send_header("Connection", "close")
                 self._cors()
                 self.end_headers()
-                for frame in stream_ask(authorization, raw_body, agent_builder, store, tracer):
-                    self.wfile.write(frame)
-                    self.wfile.flush()
+                try:
+                    for frame in stream_ask(authorization, raw_body, agent_builder, store, tracer):
+                        self.wfile.write(frame)
+                        self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    # The client went away mid-stream (closed the tab / navigated).
+                    # Nothing left to deliver; stop quietly rather than 500-ing.
+                    pass
                 return
 
             status, body = process_ask(
