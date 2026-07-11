@@ -12,9 +12,18 @@ not be able to redirect the lookup to a different chart.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Callable
 
 from observability import NullObserver
+from verification import VerificationGate
+
+# Matches a fenced ```citations block and captures the JSON array inside it.
+# Tolerant of trailing whitespace/newlines around the JSON payload.
+_CITATIONS_BLOCK_RE = re.compile(
+    r"```citations\s*\n(.*?)\n?```",
+    re.DOTALL,
+)
 
 # The response object returned by the message-creator (SDK Message shape).
 MessageResponse = Any
@@ -34,11 +43,37 @@ ToolSpec = dict[str, Any]
 # runaway chain independently of (and more strictly than) the raw iteration cap.
 _DEFAULT_MAX_TOOL_CALLS = 8
 
+def _collect_refs(data: Any) -> set[str]:
+    """Pull every ``ref`` string from tool-result data.
+
+    A tool result may be a single dict (with an optional ``"ref"`` key) or a
+    list of such dicts (e.g. medication/chart rows). Tools without a ``ref``
+    contribute nothing.
+    """
+    refs: set[str] = set()
+    rows = data if isinstance(data, list) else [data]
+    for row in rows:
+        if isinstance(row, dict):
+            ref = row.get("ref")
+            if isinstance(ref, str):
+                refs.add(ref)
+    return refs
+
+
 _SYSTEM_PROMPT = (
     "You are a clinical assistant embedded in an electronic health record. "
     "Answer questions about the current patient concisely and accurately, "
     "using the get_patient_summary tool to retrieve the patient's chart when "
-    "clinical detail is needed. Never speculate beyond the retrieved data."
+    "clinical detail is needed. Never speculate beyond the retrieved data.\n\n"
+    "Ground every answer in the retrieved records. For each record you rely on, "
+    "cite it inline with an [Sn] marker (S1, S2, ...) placed next to the claim "
+    "it supports. End your answer with a fenced ```citations block containing a "
+    "JSON array that maps each n to the exact tool-provided ref, e.g.\n"
+    "```citations\n"
+    '[{"n": 1, "ref": "prescription:1"}]\n'
+    "```\n"
+    "When you state that something is not documented, cite it with the ref "
+    '"openemr:_absence".'
 )
 
 
@@ -105,6 +140,31 @@ class ClaudeAgent:
                 return spec["handler"]
         return None
 
+    def _gate_final_answer(self, draft: str, retrieved_refs: set[str]) -> str:
+        """Apply the grounding gate iff the draft used the §4 citation format.
+
+        If ``draft`` carries a fenced ```citations block, parse it, remove the
+        block from the display text, run :class:`VerificationGate`, and return
+        the rendered (fabricated-stripped / ungrounded-demoted) answer. Without
+        a citations block the draft is returned unchanged — legacy/unformatted
+        answers are never gated.
+        """
+        match = _CITATIONS_BLOCK_RE.search(draft)
+        if match is None:
+            return draft
+
+        try:
+            citations = json.loads(match.group(1))
+        except (ValueError, TypeError):
+            # Malformed block: strip nothing, gate nothing, return as-is.
+            return draft
+        if not isinstance(citations, list):
+            return draft
+
+        display_text = (draft[: match.start()] + draft[match.end():]).strip()
+        result = VerificationGate().verify(display_text, citations, retrieved_refs)
+        return result["rendered_answer"]
+
     def run(self, question: str, pid: int) -> str:
         """Answer ``question`` about patient ``pid`` via the tool-use loop."""
         return self.run_turn(question, pid)[0]
@@ -128,6 +188,9 @@ class ClaudeAgent:
         # Cumulative tool executions across the whole turn (every tool_result
         # appended counts once — success, failure, unknown, injected alike).
         tool_calls_made = 0
+        # Every ``ref`` value seen in tool-result data this turn. Used by the
+        # grounding gate to distinguish cited-from-record from fabricated refs.
+        retrieved_refs: set[str] = set()
         # Derive the iteration bound from the budget so the final no-tools call
         # (made once the budget is spent) always fits before the safety cap.
         max_iterations = self._max_tool_calls + 2
@@ -157,11 +220,12 @@ class ClaudeAgent:
             ]
 
             if not tool_uses:
-                answer = "".join(
+                draft = "".join(
                     block.text
                     for block in resp.content
                     if getattr(block, "type", None) == "text"
                 )
+                answer = self._gate_final_answer(draft, retrieved_refs)
                 # Retain the final assistant turn so the next turn has context.
                 # Store the extracted text (not the raw SDK blocks) so the
                 # persisted history is plain, JSON-serializable data. This
@@ -193,6 +257,7 @@ class ClaudeAgent:
                             }
                         )
                     else:
+                        retrieved_refs.update(_collect_refs(summary))
                         self._observer.record_tool_call("get_patient_summary", True)
                         tool_results.append(
                             {
@@ -218,6 +283,7 @@ class ClaudeAgent:
                             }
                         )
                     else:
+                        retrieved_refs.update(_collect_refs(result))
                         self._observer.record_tool_call(block.name, True)
                         tool_results.append(
                             {
