@@ -17,6 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 
 from agent import ClaudeAgent
+from conversation import ConversationStore
 from factory import (
     build_boundary,
     build_chart_boundary,
@@ -38,11 +39,18 @@ def process_ask(
     authorization: str,
     raw_body: bytes,
     agent_builder: AgentBuilder,
+    store: ConversationStore | None = None,
 ) -> tuple[int, dict[str, Any]]:
     """Validate a /ask request and run the agent. Returns (status, json_body).
 
-    Pure and side-effect-free apart from the injected agent: no sockets, so it is
-    directly unit-testable. Never surfaces internal error detail to the caller.
+    Pure and side-effect-free apart from the injected agent and (optional)
+    conversation store: no sockets, so it is directly unit-testable. Never
+    surfaces internal error detail to the caller.
+
+    When ``store`` is supplied and the body carries a non-empty
+    ``conversation_id``, the pid-scoped history is loaded, the turn continues it
+    via ``run_turn``, and the updated history is persisted. Otherwise the request
+    is stateless (``run``), keeping the 3-arg callers backward compatible.
     """
     if not authorization.startswith(_BEARER_PREFIX):
         return 401, {"error": "missing bearer token"}
@@ -54,15 +62,23 @@ def process_ask(
         data = json.loads(raw_body or b"{}")
         pid = int(data.get("pid", 0))
         question = str(data.get("question", "")).strip()
+        conversation_id = data.get("conversation_id")
     except (ValueError, TypeError, AttributeError, json.JSONDecodeError):
         return 400, {"error": "invalid request"}
 
     if pid <= 0 or question == "":
         return 400, {"error": "pid and question are required"}
 
+    multi_turn = store is not None and isinstance(conversation_id, str) and conversation_id != ""
+
     try:
         agent = agent_builder(pid, jwt)
-        answer = agent.run(question, pid)
+        if multi_turn:
+            history = store.history(conversation_id, pid)
+            answer, new_history = agent.run_turn(question, pid, history)
+            store.remember(conversation_id, pid, new_history)
+        else:
+            answer = agent.run(question, pid)
     except Exception:
         # Never leak internal detail (API errors, boundary failures) to the browser.
         logging.getLogger("sidecar").exception("agent turn failed", extra={"pid": pid})
@@ -113,8 +129,16 @@ def default_agent_builder(
     return build
 
 
-def make_handler(agent_builder: AgentBuilder, allow_origin: str) -> type[BaseHTTPRequestHandler]:
-    """Create a request-handler class bound to an agent-builder and CORS origin."""
+def make_handler(
+    agent_builder: AgentBuilder,
+    allow_origin: str,
+    store: ConversationStore | None = None,
+) -> type[BaseHTTPRequestHandler]:
+    """Create a request-handler class bound to an agent-builder and CORS origin.
+
+    An optional ``ConversationStore`` enables multi-turn context for requests
+    that carry a ``conversation_id``.
+    """
 
     class Handler(BaseHTTPRequestHandler):
         def _cors(self) -> None:
@@ -146,6 +170,7 @@ def make_handler(agent_builder: AgentBuilder, allow_origin: str) -> type[BaseHTT
                 self.headers.get("Authorization", ""),
                 raw_body,
                 agent_builder,
+                store,
             )
             self._send_json(status, body)
 
@@ -197,7 +222,14 @@ def main() -> None:
     port = int(os.environ.get("OE_AI_AGENT_PORT") or os.environ.get("PORT") or "8900")
 
     message_creator = build_message_creator(api_key)
-    handler = make_handler(default_agent_builder(summary_url, message_creator, read_url), allow_origin)
+    # Ephemeral, pid-scoped, TTL-bounded store so follow-up questions carry
+    # context across turns (in-memory only — no PHI persisted to disk).
+    store = ConversationStore()
+    handler = make_handler(
+        default_agent_builder(summary_url, message_creator, read_url),
+        allow_origin,
+        store,
+    )
     server = ThreadingHTTPServer((host, port), handler)
     print(f"AI sidecar listening on http://{host}:{port}/ask -> {summary_url}", flush=True)
     try:
