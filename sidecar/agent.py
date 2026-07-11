@@ -198,6 +198,7 @@ class ClaudeAgent:
         question: str,
         pid: int,
         history: list | None = None,
+        on_event: Callable[[dict], None] | None = None,
     ) -> tuple[str, list]:
         """Run one turn and return ``(answer, messages)``.
 
@@ -205,6 +206,13 @@ class ClaudeAgent:
         as the user turn, runs the same bounded tool-use loop as ``run``, and on
         the final text answer appends the assistant turn so the returned message
         list can seed the next turn. The pid is fixed for the session.
+
+        When ``on_event`` is supplied, each tool execution emits a live status
+        event ``{"type": "tool", "name": <tool>, "ok": <bool>}`` (success,
+        failure, and unknown-tool alike) after it is recorded. The answer text is
+        NEVER emitted through ``on_event`` — it is returned buffered and gated as
+        today, so no unverified clinical content leaks through the status
+        channel. ``on_event=None`` reproduces today's behaviour byte-for-byte.
         """
         messages: list[dict[str, Any]] = list(history or [])
         messages.append({"role": "user", "content": question})
@@ -275,6 +283,8 @@ class ClaudeAgent:
                         # Record the failure and feed an error result back so the
                         # model can respond; the loop must not crash.
                         self._observer.record_tool_call("get_patient_summary", False)
+                        if on_event is not None:
+                            on_event({"type": "tool", "name": block.name, "ok": False})
                         tool_results.append(
                             {
                                 "type": "tool_result",
@@ -287,6 +297,8 @@ class ClaudeAgent:
                         retrieved_refs.update(_collect_refs(summary))
                         retrieved_data.update(_collect_data(summary))
                         self._observer.record_tool_call("get_patient_summary", True)
+                        if on_event is not None:
+                            on_event({"type": "tool", "name": block.name, "ok": True})
                         tool_results.append(
                             {
                                 "type": "tool_result",
@@ -302,6 +314,8 @@ class ClaudeAgent:
                         result = handler(pid, block.input)
                     except Exception:
                         self._observer.record_tool_call(block.name, False)
+                        if on_event is not None:
+                            on_event({"type": "tool", "name": block.name, "ok": False})
                         tool_results.append(
                             {
                                 "type": "tool_result",
@@ -314,6 +328,8 @@ class ClaudeAgent:
                         retrieved_refs.update(_collect_refs(result))
                         retrieved_data.update(_collect_data(result))
                         self._observer.record_tool_call(block.name, True)
+                        if on_event is not None:
+                            on_event({"type": "tool", "name": block.name, "ok": True})
                         tool_results.append(
                             {
                                 "type": "tool_result",
@@ -323,6 +339,8 @@ class ClaudeAgent:
                         )
                 else:
                     self._observer.record_tool_call(block.name, False)
+                    if on_event is not None:
+                        on_event({"type": "tool", "name": block.name, "ok": False})
                     tool_results.append(
                         {
                             "type": "tool_result",
