@@ -5,20 +5,22 @@
 #   * eval:live    — scored sweep against the REAL agent+LLM; fails below the
 #     pass-rate threshold. Needs the ANTHROPIC_API_KEY CI variable.
 #
-# IMPORTANT — this project's GitLab instance currently has NO registered runners.
-# A pipeline on every MR / branch push would sit `pending` forever (no runner to
-# pick it up) and BLOCK merges. So the top-level `workflow:rules` below create a
-# pipeline ONLY where a runner is expected and the gate is explicitly wanted:
-# scheduled runs, release tags, a manual "Run pipeline" (web), or when RUN_EVAL_CI
-# is set. Ordinary MRs and branch pushes create NO pipeline and never block a merge.
+# A runner is registered, so the per-push blocking gate is ON: eval:offline runs
+# on every MR and branch push and must pass to merge. eval:live (the scored LLM
+# sweep) stays manual / scheduled / tag and never blocks an MR.
 #
-# Once a runner is registered and you want the per-push blocking gate, add
-#   - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-#   - if: '$CI_COMMIT_BRANCH'
-# to the workflow rules (and drop this note).
+# The workflow rules also de-duplicate: a branch push that already has an open MR
+# runs only the MR pipeline, not a redundant branch pipeline.
 
 workflow:
   rules:
+    # Skip the redundant branch pipeline when the branch already has an open MR.
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS && $CI_PIPELINE_SOURCE == "push"'
+      when: never
+    # Per-push blocking gate: merge requests and branch pushes.
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH'
+    # Live-sweep triggers (eval:live is manual/allow_failure within these).
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
     - if: '$CI_COMMIT_TAG'
     - if: '$CI_PIPELINE_SOURCE == "web"'
@@ -32,9 +34,8 @@ stages:
 default:
   image: python:3.12-slim
 
-# Deterministic offline eval tests. Runs in any pipeline the workflow allows
-# (schedule / tag / web / RUN_EVAL_CI). This is the gate that would block an MR
-# once a runner exists and the workflow is opened up to MR events.
+# Deterministic offline eval tests — the per-push BLOCKING gate. Runs on every
+# MR and branch push (and in schedule/tag/web pipelines too) and must pass to merge.
 eval:offline:
   stage: test
   before_script:
