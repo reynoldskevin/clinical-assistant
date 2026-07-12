@@ -43,7 +43,11 @@ or unset — keeps it disabled. The same signing key (`OE_AI_AGENT_SIGNING_KEY` 
 
 1. In Postman: **Import** → **File** → select
    `postman/oe-ai-agent.postman_collection.json`.
-2. Open the collection's **Variables** tab and adjust as needed (see below).
+2. Import an **environment** to target local or the Railway demo:
+   - `postman/oe-ai-agent.local.postman_environment.json` — local dev stack
+   - `postman/oe-ai-agent.production.postman_environment.json` — Railway demo
+   Select it from the environment dropdown (top-right). Without an environment,
+   the collection's built-in variables default to local.
 
 ## Run order
 
@@ -61,11 +65,13 @@ or use the collection runner.
 | `pid` | `1` | Synthetic demo patient id |
 | `jwt` | *(empty)* | Populated by request 1 |
 
-To point at a **Railway demo** instead of local, edit `openemr_base_url` and
-`sidecar_base_url` to the deployed hostnames, e.g.:
+To target the **Railway demo**, select the
+`OE AI Agent — Production (Railway)` environment (or edit the variables). Its
+values point at the deployed hosts:
 
-- `openemr_base_url` → `https://<your-openemr>.up.railway.app/interface/modules/custom_modules/oe-module-ai-agent/public`
-- `sidecar_base_url` → `https://<your-sidecar>.up.railway.app`
+- `openemr_base_url` → `https://truthful-peace-production-62af.up.railway.app/interface/modules/custom_modules/oe-module-ai-agent/public`
+- `sidecar_base_url` → `https://ai-sidecar-production-c492.up.railway.app`
 
-Keep `dev_token_mint` / `OE_AI_AGENT_DEV_MINT` enabled only on the synthetic
-demo deployment.
+The Railway demo holds **synthetic data only**, so the dev-mint gate
+(`OE_AI_AGENT_DEV_MINT=1`) is enabled there for the collection to run. Keep it
+enabled **only** on a synthetic-demo deployment — never on real PHI.
