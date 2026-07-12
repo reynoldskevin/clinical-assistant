@@ -30,6 +30,7 @@ class EvalCase:
     graders: list[dict]
     uc: int | None = None
     category: str | None = None
+    guards: dict | None = None
 
 
 @dataclass
@@ -52,6 +53,7 @@ def load_cases(yaml_text: str) -> list[EvalCase]:
             graders=item["graders"],
             uc=item.get("uc"),
             category=item.get("category"),
+            guards=item.get("guards"),
         )
         for item in raw
     ]

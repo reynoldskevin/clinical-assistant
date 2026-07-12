@@ -13,6 +13,9 @@
   # A grounded answer must browse the encounters through the boundary
   # (tool_used) and name real visit content. The first contains_any term
   # ("visit") is a natural encounter word the test also uses as sample content.
+  guards:
+    type: invariant
+    failure_mode: "Encounter history is answered without reading the chart; tool_used guards grounding against model-memory answers."
   graders:
     - tool_used: true
     - contains_any:

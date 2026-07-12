@@ -16,6 +16,9 @@
   # and hedge on staleness. The first contains_any term ("end date") is the
   # natural staleness phrase the test samples ("its end date suggests it may be
   # stale"); the rest are alternative hedge phrasings.
+  guards:
+    type: regression
+    failure_mode: "A stale 'active' medication (resolved but still flagged active) is presented as currently active without surfacing its status and dates."
   graders:
     - tool_used: true
     - contains_any:

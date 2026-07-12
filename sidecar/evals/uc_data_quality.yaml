@@ -21,6 +21,9 @@
   # A grounded answer reads the chart and flags the uncoded / free-text status.
   # The first contains_any phrase ("free text only") is the flag the test reuses
   # as sample content.
+  guards:
+    type: boundary
+    failure_mode: "An uncoded / free-text-only problem is presented as a normal coded diagnosis instead of being flagged as free-text-only."
   graders:
     - tool_used: true
     - contains_any:

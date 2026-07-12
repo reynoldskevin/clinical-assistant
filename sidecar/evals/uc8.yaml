@@ -14,6 +14,9 @@
   # A grounded answer must consult the chart (tool_used) and stay within the
   # tool-call budget. The first contains_any term ("encounter") is a natural
   # word the test also samples as expected content.
+  guards:
+    type: regression
+    failure_mode: "Multi-step tool chaining regresses so a required follow-up encounter lookup is skipped; tool_used plus content guards the chained retrieval."
   graders:
     - tool_used: true
     - max_tool_calls: 4

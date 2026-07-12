@@ -14,6 +14,9 @@
   # report what they contain. The first contains_any term ("chest pain") is the
   # phrase the test samples; the rest are honesty fallbacks for when the notes
   # contain no such mention.
+  guards:
+    type: invariant
+    failure_mode: "A free-text note search is answered from model memory; tool_used forces a real search over the chart."
   graders:
     - tool_used: true
     - contains_any:
