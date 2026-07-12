@@ -1,13 +1,13 @@
 ---
 id: 35
 title: Correlation ID — generate per agent invocation; log, trace, forward
-status: todo
+status: ready-for-merge
 depends_on: []
 branch: ticket/35-correlation-id-sidecar
 base_branch: main
 test_command: "python -m pytest sidecar/tests/test_correlation_id.py"
 full_suite_command: "python -m pytest -c sidecar/pytest.ini sidecar/tests"
-attempts: 0
+attempts: 2
 ---
 
 ## Description

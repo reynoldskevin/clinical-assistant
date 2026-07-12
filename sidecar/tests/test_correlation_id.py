@@ -143,3 +143,27 @@ def test_stream_ask_emits_and_logs_correlation_id(caplog):
     text = frames.decode("utf-8")
     assert "cid-stream-9" in text          # surfaced to the client in a frame
     assert "cid-stream-9" in caplog.text   # and written to the log
+
+
+class _RecordingTracer:
+    """Captures the metadata each turn's span is opened with."""
+
+    def __init__(self):
+        self.turns = []
+
+    def turn(self, metadata):
+        self.turns.append(dict(metadata))
+        import contextlib
+        return contextlib.nullcontext()
+
+
+def test_process_ask_tags_span_metadata_with_correlation_id():
+    tracer = _RecordingTracer()
+    process_ask("Bearer jwt", _body(), _fixed_cid_builder("cid-span-p"), tracer=tracer)
+    assert tracer.turns and tracer.turns[0]["correlation_id"] == "cid-span-p"
+
+
+def test_stream_ask_tags_span_metadata_with_correlation_id():
+    tracer = _RecordingTracer()
+    b"".join(stream_ask("Bearer jwt", _body(), _fixed_cid_builder("cid-span-s"), tracer=tracer))
+    assert tracer.turns and tracer.turns[0]["correlation_id"] == "cid-span-s"

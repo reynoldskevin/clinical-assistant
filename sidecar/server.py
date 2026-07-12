@@ -31,6 +31,7 @@ from factory import (
     build_results_tool,
     build_search_tool,
     build_tracer,
+    new_correlation_id,
 )
 from observability import TraceCollector
 
@@ -160,6 +161,8 @@ def process_ask(
 
     try:
         agent = agent_builder(pid, jwt)
+        cid = getattr(agent, "correlation_id", None) or new_correlation_id()
+        metadata["correlation_id"] = cid
         # Enter the span, but never let a span-lifecycle failure re-run the agent.
         # The agent is invoked from exactly ONE call site below so an agent error
         # (the expensive failure path) can never trigger a second LLM call.
@@ -194,17 +197,19 @@ def process_ask(
             store.remember(conversation_id, pid, new_history)
     except Exception:
         # Never leak internal detail (API errors, boundary failures) to the browser.
-        logging.getLogger("sidecar").exception("agent turn failed", extra={"pid": pid})
+        cid = locals().get("cid") or new_correlation_id()
+        logging.getLogger("sidecar").exception("agent turn failed cid=%s pid=%s", cid, pid)
         return 502, {"error": "the assistant is unavailable"}
 
     # Emit the turn's observability trace (tokens, cost, tool calls). Guarded so
-    # non-instrumented agents (e.g. test fakes) don't error.
+    # non-instrumented agents (e.g. test fakes) don't error. The cid is always in
+    # the message so a full trace can be reconstructed from the log alone.
     observer = getattr(agent, "observer", None)
     summarize = getattr(observer, "summary", None)
-    if callable(summarize):
-        logging.getLogger("sidecar").info("agent turn: pid=%s trace=%s", pid, json.dumps(summarize()))
+    trace = json.dumps(summarize()) if callable(summarize) else "null"
+    logging.getLogger("sidecar").info("agent turn: cid=%s pid=%s trace=%s", cid, pid, trace)
 
-    return 200, {"answer": answer}
+    return 200, {"answer": answer, "correlation_id": cid}
 
 
 def _sse_frame(name: str, data: dict[str, Any]) -> bytes:
@@ -249,23 +254,31 @@ def stream_ask(
     on_event = lambda ev: q.put(("event", ev))  # noqa: E731
     result: dict[str, Any] = {}
 
-    # Enter the span once, around the single agent call site in the worker; a
-    # span-lifecycle failure must never re-run the agent or break the stream.
-    cm = _span(tracer, metadata)
-    try:
-        cm.__enter__()
-        entered = True
-    except Exception:  # noqa: BLE001 - a span enter error must not break the request
-        logging.getLogger("sidecar").exception("span __enter__ failed; continuing without it")
-        entered = False
-
     def _worker() -> None:
+        # The span is entered INSIDE the worker, after the agent is built, so the
+        # per-invocation correlation id can be tagged onto the span metadata (the
+        # id is only known post-build). The span wraps the single agent call; a
+        # span-lifecycle failure must never re-run the agent or break the stream.
+        cm = None
+        entered = False
         try:
             # Build the agent inside the guarded worker so a builder failure is
             # masked to an ``error`` frame too (parity with process_ask), rather
             # than raising on the HTTP thread after the status frame is flushed.
             agent = agent_builder(pid, jwt)
             result["agent"] = agent  # for the post-run observability trace
+            cid = getattr(agent, "correlation_id", None) or new_correlation_id()
+            result["cid"] = cid
+            # Tag the span metadata with the cid, then open the span around the run
+            # so the observability trace is joinable to the cid (parity w/ process_ask).
+            metadata["correlation_id"] = cid
+            cm = _span(tracer, metadata)
+            try:
+                cm.__enter__()
+                entered = True
+            except Exception:  # noqa: BLE001 - a span enter error must not break the request
+                logging.getLogger("sidecar").exception("span __enter__ failed; continuing without it")
+                entered = False
             answer, new_history = _run_agent(
                 agent, question, pid, store, conversation_id, multi_turn, on_event=on_event
             )
@@ -274,6 +287,15 @@ def stream_ask(
         except BaseException as e:  # noqa: BLE001 - capture; never crash the worker thread
             result["error"] = e
         finally:
+            if entered and cm is not None:
+                exc = result.get("error")
+                try:
+                    if exc is not None:
+                        cm.__exit__(type(exc), exc, exc.__traceback__)
+                    else:
+                        cm.__exit__(None, None, None)
+                except Exception:  # noqa: BLE001 - a span exit error must not mask/break anything
+                    logging.getLogger("sidecar").exception("span __exit__ failed; ignoring")
             q.put(("done", None))
 
     worker = threading.Thread(target=_worker, daemon=True)
@@ -288,22 +310,14 @@ def stream_ask(
 
     worker.join()
 
-    # Close the span (swallowing exit errors) now that the single agent call has
-    # completed, regardless of success or failure.
-    if entered:
-        exc = result.get("error")
-        try:
-            if exc is not None:
-                cm.__exit__(type(exc), exc, exc.__traceback__)
-            else:
-                cm.__exit__(None, None, None)
-        except Exception:  # noqa: BLE001 - a span exit error must not mask/break anything
-            logging.getLogger("sidecar").exception("span __exit__ failed; ignoring")
+    # Resolve the cid for logging; fall back to a fresh one if the worker failed
+    # before building the agent, so logging never crashes.
+    cid = result.get("cid") or new_correlation_id()
 
     if result.get("error") is not None:
         # Never leak internal detail (API errors, boundary failures) to the browser.
         logging.getLogger("sidecar").exception(
-            "agent turn failed", extra={"pid": pid}, exc_info=result["error"]
+            "agent turn failed cid=%s pid=%s", cid, pid, exc_info=result["error"]
         )
         yield _sse_frame("error", {"error": "the assistant is unavailable"})
         return
@@ -315,14 +329,15 @@ def stream_ask(
         store.remember(conversation_id, pid, new_history)
 
     # Emit the turn's observability trace (tokens, cost, tool calls). Guarded so
-    # non-instrumented agents (e.g. test fakes) don't error.
+    # non-instrumented agents (e.g. test fakes) don't error. The cid is always in
+    # the message so a full trace can be reconstructed from the log alone.
     observer = getattr(result.get("agent"), "observer", None)
     summarize = getattr(observer, "summary", None)
-    if callable(summarize):
-        logging.getLogger("sidecar").info("agent turn: pid=%s trace=%s", pid, json.dumps(summarize()))
+    trace = json.dumps(summarize()) if callable(summarize) else "null"
+    logging.getLogger("sidecar").info("agent turn: cid=%s pid=%s trace=%s", cid, pid, trace)
 
     yield _sse_frame("answer", {"answer": answer})
-    yield _sse_frame("done", {"ok": True})
+    yield _sse_frame("done", {"ok": True, "correlation_id": cid})
 
 
 def default_agent_builder(
@@ -342,8 +357,9 @@ def default_agent_builder(
     max_tool_calls = int(os.environ.get("OE_AI_AGENT_MAX_TOOL_CALLS") or "8")
 
     def build(pid: int, jwt: str) -> ClaudeAgent:
-        boundary = build_boundary(summary_url, jwt)
-        chart_boundary = build_chart_boundary(chart_url, jwt)
+        cid = new_correlation_id()
+        boundary = build_boundary(summary_url, jwt, correlation_id=cid)
+        chart_boundary = build_chart_boundary(chart_url, jwt, correlation_id=cid)
         return ClaudeAgent(
             message_creator,
             boundary,
@@ -355,6 +371,7 @@ def default_agent_builder(
                 build_search_tool(chart_boundary),
             ],
             max_tool_calls=max_tool_calls,
+            correlation_id=cid,
         )
 
     return build
@@ -383,6 +400,8 @@ def make_handler(
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
+            if "correlation_id" in body:
+                self.send_header("X-Correlation-ID", str(body["correlation_id"]))
             self._cors()
             self.end_headers()
             self.wfile.write(payload)
