@@ -13,6 +13,9 @@
   # A grounded answer must read the results through the boundary (tool_used) and
   # name real results content. The first contains_any term ("glucose") is a
   # natural results word the test also uses as sample content.
+  guards:
+    type: invariant
+    failure_mode: "Lab results are answered from model memory; tool_used forces a real boundary read before answering."
   graders:
     - tool_used: true
     - contains_any:

@@ -16,6 +16,9 @@
   # defers the arithmetic to the deterministic calculator. The first contains_any
   # term ("troponin") is the input word the test uses as sample content; the
   # excluded phrase ("heart score is") is the forbidden computed verdict.
+  guards:
+    type: invariant
+    failure_mode: "The agent computes or states the HEART score itself instead of assembling the inputs and leaving the math to a deterministic calculator."
   graders:
     - tool_used: true
     - contains_any:

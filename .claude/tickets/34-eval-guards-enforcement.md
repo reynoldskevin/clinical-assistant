@@ -1,13 +1,13 @@
 ---
 id: 34
 title: Executable boundary/invariant/regression guards on every eval case
-status: todo
+status: ready-for-merge
 depends_on: []
 branch: ticket/34-eval-guards-enforcement
 base_branch: main
 test_command: "python -m pytest sidecar/tests/test_eval_guards_enforcement.py"
 full_suite_command: "python -m pytest -c sidecar/pytest.ini sidecar/tests"
-attempts: 0
+attempts: 1
 ---
 
 ## Description

@@ -18,6 +18,9 @@
   # a longitudinal PATTERN across prior encounters rather than just today's visit.
   # The first contains_any term ("prior") is the pattern word the test reuses as
   # sample content.
+  guards:
+    type: regression
+    failure_mode: "The agent regresses to shallow retrieval (noting that encounters exist) instead of synthesizing the pattern across prior encounters."
   graders:
     - tool_used: true
     - contains_any:
@@ -39,6 +42,9 @@
   # "known", etc. and would pass almost any answer (including a fabricated one). The
   # first phrase ("no prior") reads naturally in "There is no prior such study."; a
   # fabricated-prior answer contains none of these phrases, so it fails.
+  guards:
+    type: boundary
+    failure_mode: "A prior study that is not in the record is fabricated instead of being honestly flagged as not documented."
   graders:
     - contains_any:
         - "no prior"

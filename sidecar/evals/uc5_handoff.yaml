@@ -13,6 +13,9 @@
   # A grounded handoff must read the chart through the boundary (tool_used) and
   # name the handoff structure. The first contains_any term ("presentation") is
   # a natural handoff word the test also uses as sample content.
+  guards:
+    type: invariant
+    failure_mode: "A handoff is produced without reading the chart; tool_used guards grounding against model-memory answers."
   graders:
     - tool_used: true
     - contains_any:
