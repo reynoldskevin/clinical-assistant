@@ -93,7 +93,7 @@ def test_encounter_tools_are_wellformed_and_dispatch_to_boundary():
     class FakeChartBoundary:
         def list_encounters(self, pid):
             calls.append(("list", pid))
-            return {"encounters": []}
+            return []  # the real boundary returns a list of encounter rows (T37 validates it)
 
         def get_encounter(self, pid, encounter_id):
             calls.append(("get", pid, encounter_id))
@@ -113,6 +113,6 @@ def test_encounter_tools_are_wellformed_and_dispatch_to_boundary():
     list_out = by_name["list_encounters"]["handler"](42, {})
     get_out = by_name["get_encounter"]["handler"](42, {"encounter_id": 9})
 
-    assert list_out == {"encounters": []}
+    assert list_out == []
     assert get_out == {"encounter": 9}
     assert calls == [("list", 42), ("get", 42, 9)]

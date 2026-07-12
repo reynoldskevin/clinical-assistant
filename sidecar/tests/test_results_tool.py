@@ -64,7 +64,7 @@ def test_results_tool_is_wellformed_and_dispatches_to_boundary():
     class FakeChartBoundary:
         def get_results(self, pid):
             calls.append(("results", pid))
-            return {"results": []}
+            return []  # the real boundary returns a list of result rows (T37 validates it)
 
     spec = build_results_tool(FakeChartBoundary())
 
@@ -75,5 +75,5 @@ def test_results_tool_is_wellformed_and_dispatches_to_boundary():
 
     # Handler is called with the fixed session pid; model input is irrelevant here.
     out = spec["handler"](42, {})
-    assert out == {"results": []}
+    assert out == []
     assert calls == [("results", 42)]
