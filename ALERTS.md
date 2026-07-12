@@ -16,7 +16,7 @@ the per-turn fields the sidecar logs to the `oe-ai-agent` Braintrust project
 Dashboard: <https://www.braintrust.dev/app/KevinReynolds/p/oe-ai-agent/monitor>
 
 Severity key: **P1** = page immediately; **P2** = notify on-call, respond same
-shift.
+shift; **P3** = informational / triage next business day.
 
 ---
 
@@ -27,6 +27,7 @@ shift.
 | **Metric** | 95th percentile of agent-turn latency (dominated by the Anthropic call). Braintrust auto-records span **duration** on the `agent-turn` / `wrap_anthropic` spans — the exact BTQL field is the span duration metric Braintrust exposes (`duration`; confirm the unit/label in your Monitor view). |
 | **Threshold** | **p95 > 10 s** sustained over a **15-minute** window |
 | **BTQL** | `select percentile(duration, 0.95) as p95 from project_logs where created > now() - interval 15 minute` → alert when `p95` exceeds the 10 s threshold (match the unit Braintrust reports duration in) |
+| **SQL filter** | `duration > 10` — the row-level slow-turn proxy for the p95 aggregate (alert when the *rate* of slow turns is high) |
 | **Window / interval** | 15 min rolling, evaluated every 5 min |
 
 **What it means.** One in twenty (or more) requests is slow enough that the
@@ -57,6 +58,7 @@ not at our own code.
 | **Metric** | Fraction of turns that failed outright (the turn returned the safe "assistant is unavailable" 502 / `scores.success = 0`, `metadata.outcome = "error"`) |
 | **Threshold** | **error rate > 5 %** over a **15-minute** window (with a floor of ≥ 20 requests to avoid noise on low volume) |
 | **BTQL** | `select count(*) filter (where scores.success = 0) / count(*) as error_rate from project_logs where created > now() - interval 15 minute` → alert when `error_rate > 0.05` |
+| **SQL filter** | `scores.success = 0` — or `metadata.outcome = 'error'` (alert when > 5 % of events in the window match) |
 | **Window / interval** | 15 min rolling, evaluated every 5 min |
 
 **What it means.** More than 1 in 20 requests is failing completely — the agent
@@ -87,6 +89,7 @@ is unavailable." This is a real outage of the feature; **P1**.
 | **Metric** | Fraction of chart-tool executions that failed (`sum(metrics.tool_failures) / sum(metrics.tool_calls)`), i.e. boundary/`read.php` reads erroring mid-turn — the turns the agent marks **degraded** (T31) |
 | **Threshold** | **tool failure rate > 10 %** over a **15-minute** window |
 | **BTQL** | `select sum(metrics.tool_failures) / sum(metrics.tool_calls) as tool_fail_rate from project_logs where created > now() - interval 15 minute` → alert when `tool_fail_rate > 0.10` (cross-check `metadata.degraded = true` rate) |
+| **SQL filter** | `metrics.tool_failures > 0` — or `metadata.degraded = true` (alert when > 10 % of turns in the window match) |
 | **Window / interval** | 15 min rolling, evaluated every 5 min |
 
 **What it means.** The agent is still answering, but its chart lookups are
@@ -111,11 +114,73 @@ alert.
 
 ---
 
-## Agent-specific alerts (beyond the required three)
+## Alert 4 — Verification-block rate exceeding threshold  (P2)
 
-- **Verification-block rate** — `count(*) filter (where metadata.verification_verdict = 'blocked') / count(*)` over 1 h. A rising block rate (the gate replacing answers with the safe fallback) means the model is producing more ungrounded/contradictory drafts — a quality regression worth investigating (prompt or model change). **P2.**
-- **Cost per hour** — `sum(metrics.cost_usd)` over 1 h vs. a budget line; catches a runaway loop or a token-size regression. **P2.**
-- **Truncation rate** — `metadata.truncated = true` rate; a rising rate means turns are hitting the tool-call budget, hinting the budget is too low for real workloads. **P3 / informational.**
+| | |
+|---|---|
+| **Metric** | Fraction of turns the verification gate **blocked** — replaced the draft with the safe fallback (`metadata.verification_verdict = 'blocked'`; V1/V2/V3/V6/V7, T24/T29) |
+| **Threshold** | **block rate > 10 %** over a **1-hour** window (blocking is rare in normal operation) |
+| **BTQL** | `select count(*) filter (where metadata.verification_verdict = 'blocked') / count(*) as block_rate from project_logs where created > now() - interval 1 hour` → alert when `block_rate > 0.10` |
+| **SQL filter** | `metadata.verification_verdict = 'blocked'` (alert when > 10 % of turns in the window match) |
+| **Window / interval** | 1 h rolling, evaluated every 15 min |
+
+**What it means.** The safety gate is catching an unusual number of ungrounded,
+misattributed, or contradictory drafts and withholding them (physicians get
+"I can't verify that against the record"). The agent is **failing safe** — this is
+not a data-exposure risk — but a rising block rate signals the model's grounding
+is slipping: usually a system-prompt change (T33), a model-version change, or a
+boundary payload-shape change that trips V3/V7.
+
+**On-call response.**
+1. Confirm it's genuine blocking, not a gate bug: pull a few blocked turns by
+   `correlation_id`; read the draft vs. the raised flags
+   (`contradicts_record` / `contradicts_status` / `out_of_scope_phi` / …).
+2. Correlate with recent deploys — a prompt or model change is the usual cause; a
+   boundary field-shape change can also trip the contradiction checks.
+3. If a prompt/model regression: **roll back the sidecar deploy**.
+4. If the gate is over-blocking legitimate answers (false positives): file a ticket
+   to review the offending rule — **do NOT loosen the gate under incident pressure**
+   without review; it is the trust boundary.
+5. Fails safe, so **P2** (quality), not P1 (outage).
+
+---
+
+## Alert 5 — Truncation rate exceeding threshold  (P3 → P2)
+
+| | |
+|---|---|
+| **Metric** | Fraction of turns that hit the tool-call budget and returned the "reached my lookup limit" partial answer (`metadata.truncated = true`; T30) |
+| **Threshold** | **truncation rate > 15 %** over a **1-hour** window |
+| **BTQL** | `select count(*) filter (where metadata.truncated = true) / count(*) as trunc_rate from project_logs where created > now() - interval 1 hour` → alert when `trunc_rate > 0.15` |
+| **SQL filter** | `metadata.truncated = true` (alert when > 15 % of turns in the window match) |
+| **Window / interval** | 1 h rolling, evaluated every 15 min |
+
+**What it means.** Turns are frequently exhausting the max-tool-calls budget
+(default 8) before the model finishes, forcing a partial answer with the
+truncation disclosure. The answers are honest about being partial, but a high rate
+means either the budget is too low for the real question complexity, or the model
+is **looping** (over-calling tools) — either way physicians get incomplete answers
+more often than they should.
+
+**On-call response.**
+1. Complexity vs. loop: pull truncated turns by `correlation_id`; look at
+   `metrics.tool_calls` (all pinned at the cap?) and *which* tools ran — legitimate
+   multi-source questions vs. the same tool repeatedly (a loop).
+2. If genuine complexity: consider raising `OE_AI_AGENT_MAX_TOOL_CALLS` (env) — but
+   weigh the latency/cost cost (more calls = slower, pricier); tune, don't crank.
+3. If a loop (one tool repeatedly): a model/prompt regression — correlate with
+   deploys and roll back if it started at a deploy boundary.
+4. Cross-check the latency (Alert 1) and cost signals — loop-driven truncation
+   usually shows up there too.
+5. Normally **P3 / informational**; escalate to **P2** if truncation is high *and*
+   answers are visibly degraded.
+
+---
+
+## Other signals (informational, not alerted by default)
+
+- **Cost per hour** — `sum(metrics.cost_usd)` over 1 h vs. a budget line; catches a
+  runaway loop or a token-size regression. Add as an alert if you set a cost budget.
 
 ## Notes
 
