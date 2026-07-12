@@ -14,6 +14,20 @@ import urllib.request
 import uuid
 from typing import Any, Callable
 
+from contracts import (
+    EmptyToolInput,
+    EncounterRow,
+    GetEncounterInput,
+    GetMedicationsInput,
+    LabResult,
+    MedicationRow,
+    NoteSnippet,
+    PatientSummary,
+    SearchChartInput,
+    validate_obj,
+    validate_rows,
+)
+
 
 def new_correlation_id() -> str:
     """Return a unique, non-empty correlation id for one agent invocation."""
@@ -139,7 +153,9 @@ def build_boundary(
         parsed = json.loads(body)
         if not isinstance(parsed, dict):
             raise ValueError("boundary returned a non-object summary")
-        return parsed
+        # Validate the get_patient_summary output against its contract (raises on
+        # a contract violation); returns the original dict unchanged (lossless).
+        return validate_obj(PatientSummary, parsed)
 
     return boundary
 
@@ -263,12 +279,10 @@ def build_encounter_tools(chart_boundary: ChartBoundary) -> list[dict[str, Any]]
                 "first, with each encounter's id, date, and reason. Takes no "
                 "arguments: the patient is fixed for this session."
             ),
-            "input_schema": {
-                "type": "object",
-                "properties": {},
-                "additionalProperties": False,
-            },
-            "handler": lambda pid, inp: chart_boundary.list_encounters(pid),
+            "input_schema": EmptyToolInput.model_json_schema(),
+            "handler": lambda pid, inp: validate_rows(
+                EncounterRow, chart_boundary.list_encounters(pid)
+            ),
         },
         {
             "name": "get_encounter",
@@ -277,13 +291,13 @@ def build_encounter_tools(chart_boundary: ChartBoundary) -> list[dict[str, Any]]
                 "current patient by its encounter id. Use list_encounters first "
                 "to find the id."
             ),
-            "input_schema": {
-                "type": "object",
-                "properties": {"encounter_id": {"type": "integer"}},
-                "required": ["encounter_id"],
-                "additionalProperties": False,
-            },
-            "handler": lambda pid, inp: chart_boundary.get_encounter(pid, int(inp["encounter_id"])),
+            "input_schema": GetEncounterInput.model_json_schema(),
+            "handler": lambda pid, inp: validate_obj(
+                EncounterRow,
+                chart_boundary.get_encounter(
+                    pid, GetEncounterInput.model_validate(inp).encounter_id
+                ),
+            ),
         },
     ]
 
@@ -304,12 +318,10 @@ def build_results_tool(chart_boundary: ChartBoundary) -> dict[str, Any]:
             "recent labs. Takes no arguments: the patient is fixed for this "
             "session."
         ),
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-            "additionalProperties": False,
-        },
-        "handler": lambda pid, inp: chart_boundary.get_results(pid),
+        "input_schema": EmptyToolInput.model_json_schema(),
+        "handler": lambda pid, inp: validate_rows(
+            LabResult, chart_boundary.get_results(pid)
+        ),
     }
 
 
@@ -334,12 +346,13 @@ def build_medications_tool(chart_boundary: ChartBoundary) -> dict[str, Any]:
             "to list only active medications. The patient is fixed for this "
             "session."
         ),
-        "input_schema": {
-            "type": "object",
-            "properties": {"active_only": {"type": "boolean"}},
-            "additionalProperties": False,
-        },
-        "handler": lambda pid, inp: chart_boundary.get_medications(pid, bool(inp.get("active_only", False))),
+        "input_schema": GetMedicationsInput.model_json_schema(),
+        "handler": lambda pid, inp: validate_rows(
+            MedicationRow,
+            chart_boundary.get_medications(
+                pid, GetMedicationsInput.model_validate(inp).active_only
+            ),
+        ),
     }
 
 
@@ -363,14 +376,11 @@ def build_search_tool(chart_boundary: ChartBoundary) -> dict[str, Any]:
             "'query' to search for; 'limit' is optional (default 20). The "
             "patient is fixed for this session."
         ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string"},
-                "limit": {"type": "integer"},
-            },
-            "required": ["query"],
-            "additionalProperties": False,
-        },
-        "handler": lambda pid, inp: chart_boundary.search_chart(pid, str(inp["query"]), int(inp.get("limit", 20))),
+        "input_schema": SearchChartInput.model_json_schema(),
+        "handler": lambda pid, inp: validate_rows(
+            NoteSnippet,
+            (lambda a: chart_boundary.search_chart(pid, a.query, a.limit))(
+                SearchChartInput.model_validate(inp)
+            ),
+        ),
     }

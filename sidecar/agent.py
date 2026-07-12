@@ -15,6 +15,7 @@ import json
 import re
 from typing import Any, Callable
 
+from contracts import EmptyToolInput
 from observability import NullObserver
 from verification import VerificationGate
 
@@ -185,11 +186,7 @@ class ClaudeAgent:
                     "medications, allergies, and recent vitals. Takes no "
                     "arguments: the patient is fixed for this session."
                 ),
-                "input_schema": {
-                    "type": "object",
-                    "properties": {},
-                    "additionalProperties": False,
-                },
+                "input_schema": EmptyToolInput.model_json_schema(),
             },
             *(
                 {

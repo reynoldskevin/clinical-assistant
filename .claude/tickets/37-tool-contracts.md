@@ -1,13 +1,13 @@
 ---
 id: 37
 title: Canonical Pydantic contracts for every tool input and output
-status: todo
+status: ready-for-merge
 depends_on: []
 branch: ticket/37-tool-contracts
 base_branch: main
 test_command: "python -m pytest sidecar/tests/test_contracts.py"
 full_suite_command: "python -m pytest -c sidecar/pytest.ini sidecar/tests"
-attempts: 0
+attempts: 1
 ---
 
 ## Description

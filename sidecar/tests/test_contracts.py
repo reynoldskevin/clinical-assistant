@@ -147,6 +147,40 @@ def test_medications_handler_raises_on_a_contract_violating_row():
 
 # --- requirements declares pydantic ------------------------------------------
 
+def test_build_boundary_validates_summary_output_through_contract():
+    from factory import build_boundary
+
+    class _Resp:
+        def __init__(self, payload):
+            self._p = payload
+
+        def read(self):
+            import json as _j
+            return _j.dumps(self._p).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def opener_for(payload):
+        return lambda request, timeout=None: _Resp(payload)
+
+    # A valid summary passes through unchanged (unknown fields preserved).
+    good = {"demographics": {"pid": 42}, "problems": [], "surprise": "keep"}
+    b = build_boundary("http://oe/summary.php", "jwt", opener=opener_for(good))
+    out = b(42)
+    assert out["demographics"] == {"pid": 42}
+    assert out.get("surprise") == "keep"
+
+    # A contract-violating summary (wrong-typed known field) raises.
+    bad = {"demographics": "not-a-dict"}
+    b2 = build_boundary("http://oe/summary.php", "jwt", opener=opener_for(bad))
+    with pytest.raises(Exception):
+        b2(42)
+
+
 def test_pydantic_is_declared_in_requirements():
     req = os.path.join(os.path.dirname(__file__), "..", "requirements.txt")
     with open(req) as fh:
