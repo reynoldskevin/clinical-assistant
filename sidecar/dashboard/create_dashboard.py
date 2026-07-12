@@ -71,13 +71,25 @@ def main() -> int:
     project_id = project["id"]
     print(f"project '{PROJECT}' -> id {project_id}")
 
+    # Resolve the ORG NAME for the app URL (Braintrust app paths use the org name
+    # and project name, NOT their ids).
+    org_name = None
+    status, orgs = _req("GET", "/v1/organization", key)
+    if status < 300 and isinstance(orgs, dict):
+        org_name = next((o.get("name") for o in orgs.get("objects", [])
+                         if o.get("id") == project.get("org_id")), None)
+    monitor_url = (
+        f"{APP_BASE}/app/{org_name}/p/{PROJECT}/monitor" if org_name
+        else f"{APP_BASE}/app (open the '{PROJECT}' project -> Monitor tab)"
+    )
+
     # 2. Idempotency: reuse an existing monitor view with our name.
     status, existing = _req("GET", f"/v1/view?object_type=project&object_id={project_id}", key)
     if status < 300 and isinstance(existing, dict):
         for v in existing.get("objects", []):
             if v.get("name") == VIEW_NAME and v.get("view_type") == "monitor":
                 print(f"monitor view already exists -> id {v.get('id')}")
-                print(f"dashboard: {APP_BASE}/app/{project_id}/monitor")
+                print(f"dashboard: {monitor_url}")
                 return 0
 
     # 3. Create the monitor view. view_data (chart config) is undocumented, so we
@@ -93,12 +105,12 @@ def main() -> int:
         status, view = _req("POST", "/v1/view", key, body)
         if status < 300 and isinstance(view, dict) and "id" in view:
             print(f"created monitor view -> id {view['id']}")
-            print(f"dashboard: {APP_BASE}/app/{project_id}/monitor")
+            print(f"dashboard: {monitor_url}")
             return 0
         print(f"attempt failed (body keys {list(body)}): HTTP {status} {view}")
 
     print("Could not create a saved monitor view via API — the built-in Monitor tab")
-    print(f"still shows the logged metrics live at {APP_BASE}/app/{project_id}/monitor")
+    print(f"still shows the logged metrics live at {monitor_url}")
     return 2
 
 

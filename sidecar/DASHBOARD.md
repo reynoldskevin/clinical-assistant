@@ -9,9 +9,10 @@ A `monitor` view was created programmatically via the Braintrust REST API by
 `sidecar/dashboard/create_dashboard.py` (idempotent — re-running reuses the
 existing view). It renders the metrics below in real time:
 
-- **Project** `oe-ai-agent` — `e274ec65-2073-44f5-acef-a18bd43f5440`
+- **Project** `oe-ai-agent` (org `KevinReynolds`)
 - **Monitor view** — `45befea2-caef-467d-9303-52bc4a48857c`
-- **URL** — <https://www.braintrust.dev/app/e274ec65-2073-44f5-acef-a18bd43f5440/monitor>
+- **URL** — <https://www.braintrust.dev/app/KevinReynolds/p/oe-ai-agent/monitor>
+  (the app path uses the org + project *names*, not their ids)
 
 The Braintrust **Monitor** tab auto-aggregates the logged spans/metrics (request
 volume, latency percentiles, error rate, and any logged scores/metrics, sliceable
