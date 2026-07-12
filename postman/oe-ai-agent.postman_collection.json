@@ -52,7 +52,11 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.collectionVariables.set('jwt', pm.response.json().token);"
+              "var token = pm.response.json().token;",
+              "pm.collectionVariables.set('jwt', token);",
+              "// Also set the active environment's jwt so it isn't shadowed by an",
+              "// (empty) environment-scope variable, which overrides collection scope.",
+              "if (pm.environment && pm.environment.name) { pm.environment.set('jwt', token); }"
             ]
           }
         }
