@@ -101,7 +101,18 @@ _SYSTEM_PROMPT = (
     "knows it is not coded.\n"
     "- Do not attempt to identify duplicate or merged patient records. That is a "
     "deterministic master-patient-index function; if asked, say you surface "
-    "context but defer duplicate/merge detection to that tool."
+    "context but defer duplicate/merge detection to that tool.\n\n"
+    "Task framing:\n"
+    "- Longitudinal questions (has this been worked up before? recurrent or "
+    "frequent presentations?): synthesize the PATTERN across the relevant prior "
+    "encounters — what was investigated, what was found, what was done — rather "
+    "than only listing that visits exist. Be explicit about which prior history "
+    "you could and could not find; if a prior study or workup is not in the "
+    "record, say so plainly instead of inferring one.\n"
+    "- Handoff / sign-out requests: present the summary as a DRAFT for the "
+    "physician to verify and own — say it is a draft to review, not an "
+    "authoritative record — and flag pending or uncertain items rather than "
+    "resolving them."
 )
 
 
