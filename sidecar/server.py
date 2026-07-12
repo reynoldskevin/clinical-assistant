@@ -57,6 +57,32 @@ def _span(tracer: Any, metadata: dict[str, Any]) -> contextlib.AbstractContextMa
         return contextlib.nullcontext()
 
 
+def _log_span_metrics(span: Any, summary: dict[str, Any] | None, *, success: bool, correlation_id: Any) -> None:
+    """Attach per-turn dashboard metrics to the tracer span, fully guarded.
+
+    Logs ``metrics``/``scores``/``metadata`` via ``span.log`` so a Braintrust
+    dashboard can aggregate error rate, tool-call counts, retries, and the
+    verification pass/fail rate. A log-less/None span, or a ``span.log`` error,
+    is a silent no-op — telemetry must never break the request.
+    """
+    if span is None or not hasattr(span, "log"):
+        return
+    verdict = summary.get("verification_verdict") if summary else None
+    scores = {"success": 1.0 if success else 0.0}
+    if verdict is not None:
+        scores["verification_pass"] = {"pass": 1.0, "pass_with_flags": 0.5, "blocked": 0.0}.get(verdict, 0.0)
+    metrics = {k: summary[k] for k in ("tool_calls", "tool_failures", "model_calls",
+               "input_tokens", "output_tokens", "cost_usd", "retries") if summary and k in summary}
+    metadata = {"outcome": "ok" if success else "error", "verification_verdict": verdict,
+                "truncated": bool(summary.get("truncated")) if summary else False,
+                "degraded": bool(summary.get("degraded")) if summary else False,
+                "correlation_id": correlation_id}
+    try:
+        span.log(metrics=metrics, scores=scores, metadata=metadata)
+    except Exception:  # noqa: BLE001 - telemetry must never break the request
+        logging.getLogger("sidecar").exception("span metric log failed; ignoring")
+
+
 def _run_agent(
     agent: Any,
     question: str,
@@ -167,8 +193,9 @@ def process_ask(
         # The agent is invoked from exactly ONE call site below so an agent error
         # (the expensive failure path) can never trigger a second LLM call.
         cm = _span(tracer, metadata)
+        span = None
         try:
-            cm.__enter__()
+            span = cm.__enter__()
             entered = True
         except Exception:  # noqa: BLE001 - a span enter error must not break the request
             logging.getLogger("sidecar").exception("span __enter__ failed; continuing without it")
@@ -177,9 +204,10 @@ def process_ask(
         try:
             result = _run_agent(agent, question, pid, store, conversation_id, multi_turn)
         except BaseException as e:
-            # Agent error: close the span (swallowing exit errors), then let the
-            # exception propagate to the outer handler which masks it to 502.
+            # Agent error: log the error metrics, close the span (swallowing exit
+            # errors), then let the exception propagate to the outer handler.
             if entered:
+                _log_span_metrics(span, None, success=False, correlation_id=cid)
                 try:
                     cm.__exit__(type(e), e, e.__traceback__)
                 except Exception:  # noqa: BLE001 - a span exit error must not mask the real failure
@@ -187,6 +215,11 @@ def process_ask(
             raise
         else:
             if entered:
+                # Attach per-turn dashboard metrics while the span is still open.
+                observer = getattr(agent, "observer", None)
+                summarize = getattr(observer, "summary", None)
+                summary = summarize() if callable(summarize) else None
+                _log_span_metrics(span, summary, success=True, correlation_id=cid)
                 try:
                     cm.__exit__(None, None, None)
                 except Exception:  # noqa: BLE001 - a span exit error must not break the request
@@ -273,19 +306,30 @@ def stream_ask(
             # so the observability trace is joinable to the cid (parity w/ process_ask).
             metadata["correlation_id"] = cid
             cm = _span(tracer, metadata)
+            span = None
             try:
-                cm.__enter__()
+                span = cm.__enter__()
                 entered = True
             except Exception:  # noqa: BLE001 - a span enter error must not break the request
                 logging.getLogger("sidecar").exception("span __enter__ failed; continuing without it")
                 entered = False
+            result["span"] = span
             answer, new_history = _run_agent(
                 agent, question, pid, store, conversation_id, multi_turn, on_event=on_event
             )
             result["answer"] = answer
             result["history"] = new_history
+            # Attach per-turn dashboard metrics while the span is still open (the
+            # finally below exits it). Guarded so telemetry never breaks the stream.
+            if entered:
+                observer = getattr(agent, "observer", None)
+                summarize = getattr(observer, "summary", None)
+                summary = summarize() if callable(summarize) else None
+                _log_span_metrics(span, summary, success=True, correlation_id=cid)
         except BaseException as e:  # noqa: BLE001 - capture; never crash the worker thread
             result["error"] = e
+            if entered:
+                _log_span_metrics(result.get("span"), None, success=False, correlation_id=result.get("cid"))
         finally:
             if entered and cm is not None:
                 exc = result.get("error")

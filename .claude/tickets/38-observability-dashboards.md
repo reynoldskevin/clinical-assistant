@@ -1,13 +1,13 @@
 ---
 id: 38
 title: Instrument per-turn dashboard metrics onto the Braintrust span + spec
-status: todo
+status: ready-for-merge
 depends_on: []
 branch: ticket/38-observability-dashboards
 base_branch: main
 test_command: "python -m pytest sidecar/tests/test_dashboard_metrics.py"
 full_suite_command: "python -m pytest -c sidecar/pytest.ini sidecar/tests"
-attempts: 0
+attempts: 1
 ---
 
 ## Description
