@@ -41,3 +41,17 @@ def test_maps_alerts_to_the_logged_metric_fields():
     assert "scores.success" in t or "success" in t
     assert "tool_failures" in t or "tool_calls" in t
     assert "btql" in t   # the condition is expressed as BTQL for Braintrust
+
+
+def test_defines_alerts_4_and_5_with_full_detail():
+    t = _text()
+    # Alert 4: verification-block rate; Alert 5: truncation rate
+    assert "verification-block rate" in t
+    assert "metadata.verification_verdict = 'blocked'" in t
+    assert "truncation rate exceeding threshold" in t
+    assert "metadata.truncated = true" in t
+
+
+def test_alerts_expose_sql_filter_clauses():
+    t = _text()
+    assert "sql filter" in t   # each alert gives a paste-able Create-alert-from-filters clause
