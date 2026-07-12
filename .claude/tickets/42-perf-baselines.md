@@ -18,7 +18,7 @@ performance changes can be measured against them.
 Build a dependency-free load-test harness (`sidecar/perf/loadtest.py`) that drives
 a target endpoint at a given concurrency, measures latency percentiles + throughput
 + error rate, and samples the sidecar process's CPU%/RSS (via `ps`). Run it against
-the sidecar under representative scenarios and record the numbers in `BASELINES.md`.
+the sidecar under representative scenarios and record the numbers in `METRICS_WEEK1.md`.
 
 ## Acceptance criteria
 - [ ] `sidecar/perf/loadtest.py`:
@@ -30,7 +30,7 @@ the sidecar under representative scenarios and record the numbers in `BASELINES.
     driver returning (latencies_ms, elapsed_s, errors).
   - `sample_process(pid)` — CPU%/RSS(MB) via `ps`.
   - `main(argv)` CLI to run named scenarios and emit a summary.
-- [ ] `BASELINES.md`: records the captured baselines under the load scenarios
+- [ ] `METRICS_WEEK1.md`: records the captured baselines under the load scenarios
   (health throughput, readiness latency, agent-turn latency), each with latency
   p50/p95/p99, throughput (rps), error rate, and the sidecar process CPU%/RSS,
   plus the environment (machine, host) and the methodology to re-run.
@@ -41,4 +41,4 @@ the sidecar under representative scenarios and record the numbers in `BASELINES.
   - percentile on [1..100]: p50=50, p95=95, p99=99
   - summarize: structure + throughput + error_rate + percentiles + empty-safe
 - guard: `sidecar/tests/test_baselines_doc.py`
-  - BASELINES.md exists and documents cpu, memory, latency, throughput
+  - METRICS_WEEK1.md exists and documents cpu, memory, latency, throughput

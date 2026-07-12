@@ -6,7 +6,7 @@ into deterministic summary statistics (nearest-rank percentiles, throughput,
 error rate). It optionally samples a target process's CPU/RSS during the run.
 
 The captured numbers back the sidecar performance baselines recorded in
-BASELINES.md. Everything here is Python standard library only — no third-party
+METRICS_WEEK1.md. Everything here is Python standard library only — no third-party
 dependencies — so it can run anywhere the interpreter runs.
 
 Usage:

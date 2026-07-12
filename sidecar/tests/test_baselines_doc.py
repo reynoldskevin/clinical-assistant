@@ -1,12 +1,12 @@
 """T42 guard test (LOCKED) — the captured performance baselines exist.
 
-BASELINES.md records the CPU / memory / latency / throughput baselines under the
-load-test scenarios so future changes can be measured against them. This guard
+METRICS_WEEK1.md records the CPU / memory / latency / throughput baselines under
+the load-test scenarios so future changes can be measured against them. This guard
 pins that the doc exists and covers the four required metric families.
 """
 import os
 
-BASELINES = os.path.join(os.path.dirname(__file__), "..", "..", "BASELINES.md")
+BASELINES = os.path.join(os.path.dirname(__file__), "..", "..", "METRICS_WEEK1.md")
 
 
 def _text():

@@ -1,9 +1,10 @@
-# Performance Baselines — AI Clinical Co-Pilot sidecar
+# Week 1 Metrics — Performance Baselines (AI Clinical Co-Pilot sidecar)
 
 Baseline infrastructure metrics (CPU, memory, request latency, throughput) for the
-Python sidecar under representative load-test scenarios. These are the reference
-numbers **future performance changes are measured against** — re-run the harness
-after a change and compare.
+Python sidecar under representative load-test scenarios, captured as the **Week 1**
+snapshot. These are the reference numbers **future performance changes are measured
+against** — re-run the harness after a change and compare against this file (add
+later snapshots as `METRICS_WEEK2.md`, etc.).
 
 ## How to reproduce
 
