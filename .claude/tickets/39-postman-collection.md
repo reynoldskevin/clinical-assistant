@@ -1,13 +1,13 @@
 ---
 id: 39
 title: Runnable Postman collection + dev-gated token mint helper
-status: todo
+status: ready-for-merge
 depends_on: []
 branch: ticket/39-postman-collection
 base_branch: main
 test_command: "phpunit-isolated --filter DevTokenMinter"
 full_suite_command: "phpunit-isolated"
-attempts: 0
+attempts: 1
 ---
 
 ## Description
