@@ -1,13 +1,13 @@
 ---
 id: 36
 title: Correlation ID in the PHP boundary audit log (end-to-end trace)
-status: todo
+status: ready-for-merge
 depends_on: [35]
 branch: ticket/36-correlation-id-php-audit
 base_branch: main
 test_command: "phpunit-isolated --filter BoundaryAuditCorrelation"
 full_suite_command: "phpunit-isolated"
-attempts: 0
+attempts: 1
 ---
 
 ## Description

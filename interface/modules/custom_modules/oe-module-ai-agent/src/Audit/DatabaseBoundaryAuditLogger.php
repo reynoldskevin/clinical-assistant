@@ -26,7 +26,17 @@ final class DatabaseBoundaryAuditLogger implements BoundaryAuditLoggerInterface
     public function __construct(
         private readonly \PDO $db,
         private readonly ClockInterface $clock,
+        private readonly ?string $correlationId = null,
     ) {
+    }
+
+    private function withCorrelationId(string $comments): string
+    {
+        if ($this->correlationId !== null && $this->correlationId !== '') {
+            return $comments . ' cid=' . $this->correlationId;
+        }
+
+        return $comments;
     }
 
     public function recordGranted(ClinicalPrincipal $principal): void
@@ -41,7 +51,8 @@ final class DatabaseBoundaryAuditLogger implements BoundaryAuditLoggerInterface
         $stmt->bindValue(4, $principal->clinicianUsername);
         $stmt->bindValue(5, $principal->patientId->value, \PDO::PARAM_INT);
         $stmt->bindValue(6, 1, \PDO::PARAM_INT);
-        $stmt->bindValue(7, $principal->purpose);
+        $comments = $this->withCorrelationId($principal->purpose);
+        $stmt->bindValue(7, $comments);
         $stmt->execute();
     }
 
@@ -56,7 +67,8 @@ final class DatabaseBoundaryAuditLogger implements BoundaryAuditLoggerInterface
         $stmt->bindValue(3, 'ai-agent');
         $stmt->bindValue(4, $requestedPid, \PDO::PARAM_INT);
         $stmt->bindValue(5, 0, \PDO::PARAM_INT);
-        $stmt->bindValue(6, $reason);
+        $comments = $this->withCorrelationId($reason);
+        $stmt->bindValue(6, $comments);
         $stmt->execute();
     }
 }
