@@ -9,6 +9,8 @@ a patient summary, run chart-read tool calls, and ask the AI sidecar a question
 
 | # | Request | Endpoint |
 |---|---------|----------|
+| — | Health (liveness) | `GET {{sidecar_base_url}}/health` |
+| — | Readiness (dependencies) | `GET {{sidecar_base_url}}/ready` |
 | 1 | Mint dev token | `POST {{openemr_base_url}}/dev_mint.php` |
 | 2 | Get patient summary | `POST {{openemr_base_url}}/summary.php` |
 | 3 | Chart read: list encounters | `POST {{openemr_base_url}}/read.php` |
@@ -16,6 +18,24 @@ a patient summary, run chart-read tool calls, and ask the AI sidecar a question
 | 3c | Chart read: search notes | `POST {{openemr_base_url}}/read.php` |
 | 4 | Ask (buffered) | `POST {{sidecar_base_url}}/ask` |
 | 5 | Ask (streaming SSE) | `POST {{sidecar_base_url}}/ask/stream` |
+
+## Health and readiness probes
+
+Two unauthenticated `GET` requests on the sidecar (placed at the top of the
+collection) check its operational state — no token required:
+
+- **Health (liveness)** — `GET {{sidecar_base_url}}/health`. Reports whether the
+  sidecar process is alive. Always returns `200` if the process is up; it says
+  nothing about downstream dependencies.
+- **Readiness (dependencies)** — `GET {{sidecar_base_url}}/ready`. Probes the
+  meaningful dependencies — OpenEMR (the chart-read boundary), the LLM provider
+  (Anthropic), and the observability backend (Braintrust) — and returns `200`
+  when all reachable, `503` otherwise. The body carries a per-dependency report.
+  A `4xx/5xx` from a dependency counts as *reachable* (the server answered — an
+  unauthenticated probe to OpenEMR returns `401`, which proves the boundary is
+  up); only a connection-level failure marks a dependency down. Observability is
+  reported as `not_configured` (and does not fail readiness) when no Braintrust
+  key is set.
 
 ## Enable the dev mint gate (synthetic demo only)
 

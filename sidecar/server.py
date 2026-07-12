@@ -16,12 +16,14 @@ import logging
 import os
 import queue
 import threading
+import urllib.request
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 
 from agent import ClaudeAgent
 from conversation import ConversationStore
+from health import liveness, ready_response
 from factory import (
     build_boundary,
     build_chart_boundary,
@@ -454,6 +456,26 @@ def make_handler(
             self.send_response(204)
             self._cors()
             self.end_headers()
+
+        def do_GET(self) -> None:  # noqa: N802 (http.server naming)
+            path = self.path.rstrip("/") or "/"
+            if path == "/health":
+                self._send_json(200, liveness())          # liveness: unconditional 200
+                return
+            if path == "/ready":
+                summary_url = os.environ.get(
+                    "OE_AI_AGENT_SUMMARY_URL",
+                    "http://localhost:8300/interface/modules/custom_modules/oe-module-ai-agent/public/summary.php",
+                )
+                status, body = ready_response(
+                    summary_url,
+                    os.environ.get("ANTHROPIC_API_KEY"),
+                    os.environ.get("BRAINTRUST_API_KEY"),
+                    urllib.request.urlopen,
+                )
+                self._send_json(status, body)
+                return
+            self._send_json(404, {"error": "not found"})
 
         def do_POST(self) -> None:  # noqa: N802 (http.server naming)
             path = self.path.rstrip("/")

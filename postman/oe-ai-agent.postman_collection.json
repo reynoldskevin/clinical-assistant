@@ -28,6 +28,32 @@
   ],
   "item": [
     {
+      "name": "Health (liveness)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{sidecar_base_url}}/health",
+          "host": ["{{sidecar_base_url}}"],
+          "path": ["health"]
+        },
+        "description": "Liveness — is the sidecar process alive. Always 200 if the process is up."
+      }
+    },
+    {
+      "name": "Readiness (dependencies)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{sidecar_base_url}}/ready",
+          "host": ["{{sidecar_base_url}}"],
+          "path": ["ready"]
+        },
+        "description": "Readiness — probes OpenEMR, the LLM provider (Anthropic), and the observability backend (Braintrust). 200 when all reachable, 503 otherwise; body lists each dependency's status."
+      }
+    },
+    {
       "name": "1. Mint dev token",
       "request": {
         "method": "POST",
