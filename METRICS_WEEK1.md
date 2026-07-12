@@ -94,3 +94,8 @@ cost); a latency baseline, not a throughput/capacity number.
   and the [p95-latency alert](ALERTS.md) watch turn latency, not sidecar CPU.
 - **Memory** grows from ~15 MB idle-ish (health) to ~46 MB on an agent turn
   (Anthropic client + per-turn buffers) — a useful RSS ceiling to watch.
+
+## Concurrent-user stress tests
+
+Load/stress tests of the **deployed** agent at 10 and 50 concurrent users
+(p50/p95/p99 + error rate) are in **`STRESS_TESTS.md`**.
