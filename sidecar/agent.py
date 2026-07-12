@@ -150,12 +150,14 @@ class ClaudeAgent:
         observer: Any = None,
         extra_tools: list[ToolSpec] | None = None,
         max_tool_calls: int = _DEFAULT_MAX_TOOL_CALLS,
+        correlation_id: str | None = None,
     ) -> None:
         self._message_creator = message_creator
         self._boundary = boundary
         self._model = model
         self._max_tokens = max_tokens
         self._observer = observer or NullObserver()
+        self._correlation_id = correlation_id
         # Injectable tool registry keyed by name, each carrying its handler.
         self._extra_tools = list(extra_tools or [])
         # Cap on the total number of tool executions per turn. Once this many
@@ -167,6 +169,11 @@ class ClaudeAgent:
     def observer(self) -> Any:
         """The observability collector for this run (token usage, cost, tool calls)."""
         return self._observer
+
+    @property
+    def correlation_id(self) -> str | None:
+        """The correlation id threaded through this agent invocation, if any."""
+        return self._correlation_id
 
     def _tools(self) -> list[dict[str, Any]]:
         return [

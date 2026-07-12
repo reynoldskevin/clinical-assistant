@@ -126,4 +126,4 @@ def test_process_ask_without_store_is_stateless():
     body = json.dumps({"pid": 3, "question": "hi"}).encode()
     status, out = process_ask("Bearer t", body, lambda pid, jwt: RunAgent())
     assert status == 200
-    assert out == {"answer": "stateless answer"}
+    assert out["answer"] == "stateless answer"   # T35: body also carries an additive correlation_id

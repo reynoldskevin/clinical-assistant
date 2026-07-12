@@ -49,7 +49,7 @@ def test_process_ask_tags_the_turn_with_pid_and_conversation_id():
     status, out = process_ask("Bearer t", body, lambda pid, jwt: _MultiTurnAgent(), store=store, tracer=tracer)
 
     assert status == 200
-    assert out == {"answer": "answer"}
+    assert out["answer"] == "answer"   # T35: body also carries an additive correlation_id
     assert len(tracer.turns) == 1
     assert tracer.turns[0]["pid"] == 7
     assert tracer.turns[0]["conversation_id"] == "c9"
@@ -74,7 +74,7 @@ def test_a_failing_tracer_never_breaks_the_request():
     status, out = process_ask("Bearer t", body, lambda pid, jwt: _StatelessAgent(), tracer=FailingTracer())
 
     assert status == 200
-    assert out == {"answer": "answer"}
+    assert out["answer"] == "answer"   # T35: body also carries an additive correlation_id
 
 
 def test_build_tracer_is_a_noop_without_braintrust_key(monkeypatch):
@@ -144,7 +144,7 @@ def test_span_exit_error_is_swallowed_and_agent_runs_once():
     status, out = process_ask("Bearer t", body, lambda pid, jwt: _A(), tracer=_ExitFailTracer())
 
     assert status == 200
-    assert out == {"answer": "ok"}
+    assert out["answer"] == "ok"   # T35: body also carries an additive correlation_id
     assert len(calls) == 1
 
 
@@ -173,5 +173,5 @@ def test_span_enter_error_still_runs_agent_exactly_once():
     status, out = process_ask("Bearer t", body, lambda pid, jwt: _A(), tracer=_EnterFailTracer())
 
     assert status == 200
-    assert out == {"answer": "ok"}
+    assert out["answer"] == "ok"   # T35: body also carries an additive correlation_id
     assert len(calls) == 1

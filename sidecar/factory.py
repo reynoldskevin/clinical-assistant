@@ -11,7 +11,13 @@ import json
 import logging
 import os
 import urllib.request
+import uuid
 from typing import Any, Callable
+
+
+def new_correlation_id() -> str:
+    """Return a unique, non-empty correlation id for one agent invocation."""
+    return uuid.uuid4().hex
 
 
 def build_message_creator(
@@ -103,6 +109,7 @@ def build_boundary(
     *,
     opener: Callable[..., Any] = urllib.request.urlopen,
     timeout: float = 15.0,
+    correlation_id: str | None = None,
 ) -> Callable[[int], dict[str, Any]]:
     """Return a boundary callable that fetches the patient summary over HTTP.
 
@@ -114,14 +121,17 @@ def build_boundary(
 
     def boundary(pid: int) -> dict[str, Any]:
         payload = json.dumps({"pid": pid}).encode("utf-8")
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {jwt}",
+        }
+        if correlation_id is not None:
+            headers["X-Correlation-ID"] = correlation_id
         request = urllib.request.Request(
             summary_url,
             data=payload,
             method="POST",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {jwt}",
-            },
+            headers=headers,
         )
         with opener(request, timeout=timeout) as response:
             body = response.read()
@@ -150,22 +160,27 @@ class ChartBoundary:
         *,
         opener: Callable[..., Any],
         timeout: float,
+        correlation_id: str | None = None,
     ) -> None:
         self._base_url = base_url
         self._jwt = jwt
         self._opener = opener
         self._timeout = timeout
+        self._correlation_id = correlation_id
 
     def _post(self, op: str, pid: int, params: dict[str, Any]) -> dict[str, Any] | list[Any]:
         payload = json.dumps({"op": op, "pid": pid, "params": params}).encode("utf-8")
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self._jwt}",
+        }
+        if self._correlation_id is not None:
+            headers["X-Correlation-ID"] = self._correlation_id
         request = urllib.request.Request(
             self._base_url,
             data=payload,
             method="POST",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self._jwt}",
-            },
+            headers=headers,
         )
         with self._opener(request, timeout=self._timeout) as response:
             body = response.read()
@@ -222,6 +237,7 @@ def build_chart_boundary(
     *,
     opener: Callable[..., Any] = urllib.request.urlopen,
     timeout: float = 15.0,
+    correlation_id: str | None = None,
 ) -> ChartBoundary:
     """Return an operation-dispatched chart boundary bound to ``base_url``/``jwt``.
 
@@ -229,7 +245,7 @@ def build_chart_boundary(
     ``.get_encounter(pid, encounter_id)``, each POSTing the matching ``op`` to
     read.php with the forwarded Bearer JWT.
     """
-    return ChartBoundary(base_url, jwt, opener=opener, timeout=timeout)
+    return ChartBoundary(base_url, jwt, opener=opener, timeout=timeout, correlation_id=correlation_id)
 
 
 def build_encounter_tools(chart_boundary: ChartBoundary) -> list[dict[str, Any]]:

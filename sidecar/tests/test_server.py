@@ -36,7 +36,8 @@ def test_valid_request_returns_answer_and_forwards_jwt():
     status, out = process_ask("Bearer tok-123", body, _builder("Atrial fibrillation.", record))
 
     assert status == 200
-    assert out == {"answer": "Atrial fibrillation."}
+    assert out["answer"] == "Atrial fibrillation."
+    assert out["correlation_id"]   # T35: every invocation surfaces a correlation id
     # The forwarded credential and fixed pid reach the agent-builder unchanged.
     assert record == {"pid": 3, "jwt": "tok-123"}
 
