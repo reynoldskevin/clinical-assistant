@@ -1,13 +1,13 @@
 ---
 id: 32
 title: Close UC-4 / UC-5 eval coverage gaps (longitudinal pattern + draft ownership)
-status: todo
+status: ready-for-merge
 depends_on: []
 branch: ticket/32-uc4-uc5-eval-coverage
 base_branch: main
 test_command: "python -m pytest sidecar/tests/test_uc4_longitudinal_evals.py sidecar/tests/test_uc5_draft_ownership_evals.py"
 full_suite_command: "python -m pytest -c sidecar/pytest.ini sidecar/tests"
-attempts: 0
+attempts: 2
 ---
 
 ## Description
