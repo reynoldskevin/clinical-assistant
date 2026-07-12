@@ -68,6 +68,20 @@ if (!str_starts_with($authHeader, 'Bearer ')) {
 }
 $jwt = trim(substr($authHeader, 7));
 
+// 1b. Correlation id (forwarded by the sidecar as X-Correlation-ID). Read with
+//     the same robustness as the Authorization header. Absence is not an error.
+$correlationId = (string) ($_SERVER['HTTP_X_CORRELATION_ID'] ?? '');
+if ($correlationId === '' && function_exists('getallheaders')) {
+    foreach (getallheaders() as $name => $value) {
+        if (strcasecmp($name, 'X-Correlation-ID') === 0) {
+            $correlationId = (string) $value;
+            break;
+        }
+    }
+}
+$correlationId = trim($correlationId);
+$correlationId = $correlationId === '' ? null : $correlationId;
+
 // 2. Parse the request body. The operation is PARSED into the whitelist first:
 //    an unrecognized op is rejected before any token work is done.
 $body = json_decode((string) file_get_contents('php://input'), true);
@@ -123,7 +137,7 @@ $clock = new class implements ClockInterface {
 $endpoint = new ChartReadEndpoint(
     new ScopedTokenService($signingKey, $clock),
     new PatientSummaryService($pdo),
-    new DatabaseBoundaryAuditLogger($pdo, $clock),
+    new DatabaseBoundaryAuditLogger($pdo, $clock, $correlationId),
 );
 
 try {
