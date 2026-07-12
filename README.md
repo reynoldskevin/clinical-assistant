@@ -19,11 +19,11 @@
 # OpenEMR Agent Forge
 
 ## Contents
-[Installation](#installation)
-[Seeding demo data](#seeding-demo-data) 
-[Architecture Diagram](#architecture-diagram)
-[Engineering Deliverables](#engineering-deliverables)
-[Submission Requirements](#submission-requirements)
+[Installation](#installation)\
+[Seeding demo data](#seeding-demo-data)\
+[Architecture Diagram](#architecture-diagram)\
+[Engineering Deliverables](#engineering-deliverables)\
+[Submission Requirements](#submission-requirements) 
 
 ## Installation
 
@@ -199,11 +199,11 @@ sequenceDiagram
   TTL conversation state only).
 
 ## Engineering Deliverables
-Postman Collection and Environment [here](/postman/)
-Braintrust alerts x5 are document with on-call responses [here](ALERTS.md)
-Week 1 Infrastructure Metrics [here](METRICS_WEEK1.md)
+Postman Collection and Environment [here](/postman/)\
+Braintrust alerts x5 are document with on-call responses [here](ALERTS.md)\
+Week 1 Infrastructure Metrics [here](METRICS_WEEK1.md)\
 Stress Test results [here](STRESS_TESTS.md)
 
 ## Submission Requirements
-Eval dataset [here](EVAL_DATASET.md)
+Eval dataset [here](EVAL_DATASET.md)\
 AI Cost Analysis [here](COST_ANALYSIS.md)
