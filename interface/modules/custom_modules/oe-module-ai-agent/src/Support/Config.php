@@ -40,6 +40,19 @@ final class Config
         return self::stringValue('sidecar_url', 'OE_AI_AGENT_SIDECAR_URL');
     }
 
+    /**
+     * Whether the dev/demo-only token mint endpoint is enabled. Fail-closed:
+     * defaults to false. Truthy config/env values ('1','true','yes','on')
+     * enable it. Must NEVER be enabled on real PHI — it bypasses session,
+     * CSRF, and ACL by design.
+     */
+    public static function devMintEnabled(): bool
+    {
+        $v = strtolower(self::stringValue('dev_token_mint', 'OE_AI_AGENT_DEV_MINT'));
+
+        return in_array($v, ['1', 'true', 'yes', 'on'], true);
+    }
+
     private static function stringValue(string $key, string $envVar): string
     {
         $value = self::values()[$key] ?? null;

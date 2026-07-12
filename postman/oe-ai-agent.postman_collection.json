@@ -1,0 +1,188 @@
+{
+  "info": {
+    "name": "OpenEMR AI Clinical Co-Pilot — Agent API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Exercises the OpenEMR AI Clinical Co-Pilot agent endpoints end to end.\n\nRun order:\n  1. Mint dev token — POST dev_mint.php to obtain a pid-scoped JWT. The test script saves it to the `jwt` collection variable, so run this first; every later request reuses it via `Authorization: Bearer {{jwt}}`.\n  2. Get patient summary.\n  3 / 3b / 3c. Chart reads (encounters, medications, chart search).\n  4. Ask (buffered) — the sidecar's /ask.\n  5. Ask (streaming SSE) — the sidecar's /ask/stream.\n\nIMPORTANT: the dev mint endpoint (dev_mint.php) is DISABLED BY DEFAULT and returns 404 unless the dev-mint gate is enabled (set OE_AI_AGENT_DEV_MINT=1, or dev_token_mint in the module's config.local.php). It bypasses session/CSRF/ACL by design and is for the SYNTHETIC demo only — NEVER enable it on real PHI.\n\nPoint `openemr_base_url` and `sidecar_base_url` at your local dev stack or a Railway demo deployment via the collection variables."
+  },
+  "variable": [
+    {
+      "key": "openemr_base_url",
+      "value": "http://localhost:8300/interface/modules/custom_modules/oe-module-ai-agent/public",
+      "type": "string"
+    },
+    {
+      "key": "sidecar_base_url",
+      "value": "http://localhost:8900",
+      "type": "string"
+    },
+    {
+      "key": "pid",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "jwt",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Mint dev token",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"pid\": {{pid}}}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{openemr_base_url}}/dev_mint.php",
+          "host": ["{{openemr_base_url}}"],
+          "path": ["dev_mint.php"]
+        },
+        "description": "Mint a pid-scoped JWT for the synthetic demo patient. Requires the dev-mint gate to be enabled (OE_AI_AGENT_DEV_MINT=1); returns 404 otherwise. The test script saves the returned token to the `jwt` collection variable for subsequent requests."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.collectionVariables.set('jwt', pm.response.json().token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Get patient summary",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{jwt}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"pid\": {{pid}}}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{openemr_base_url}}/summary.php",
+          "host": ["{{openemr_base_url}}"],
+          "path": ["summary.php"]
+        },
+        "description": "Fetch the boundary-scoped patient summary. The JWT is verified server-side and must match the requested pid."
+      }
+    },
+    {
+      "name": "3. Chart read: list encounters",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{jwt}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"op\":\"list_encounters\",\"pid\":{{pid}},\"params\":{}}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{openemr_base_url}}/read.php",
+          "host": ["{{openemr_base_url}}"],
+          "path": ["read.php"]
+        },
+        "description": "Chart-read tool call: list the patient's encounters."
+      }
+    },
+    {
+      "name": "3b. Chart read: medications",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{jwt}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"op\":\"get_medications\",\"pid\":{{pid}},\"params\":{\"active_only\":false}}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{openemr_base_url}}/read.php",
+          "host": ["{{openemr_base_url}}"],
+          "path": ["read.php"]
+        },
+        "description": "Chart-read tool call: get the patient's medications (all, not just active)."
+      }
+    },
+    {
+      "name": "3c. Chart read: search notes",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{jwt}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"op\":\"search_chart\",\"pid\":{{pid}},\"params\":{\"query\":\"chest pain\",\"limit\":10}}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{openemr_base_url}}/read.php",
+          "host": ["{{openemr_base_url}}"],
+          "path": ["read.php"]
+        },
+        "description": "Chart-read tool call: full-text search the patient's chart notes."
+      }
+    },
+    {
+      "name": "4. Ask (buffered)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{jwt}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"pid\":{{pid}},\"question\":\"Give me a concise summary of this patient.\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{sidecar_base_url}}/ask",
+          "host": ["{{sidecar_base_url}}"],
+          "path": ["ask"]
+        },
+        "description": "Ask the AI sidecar a question about the patient and receive a single buffered response. The sidecar re-verifies the JWT and calls back into the OpenEMR chart-read boundary as needed."
+      }
+    },
+    {
+      "name": "5. Ask (streaming SSE)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{jwt}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"pid\":{{pid}},\"question\":\"Give me a concise summary of this patient.\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{sidecar_base_url}}/ask/stream",
+          "host": ["{{sidecar_base_url}}"],
+          "path": ["ask", "stream"]
+        },
+        "description": "Same as the buffered ask, but the sidecar streams the answer back as Server-Sent Events (SSE) so tokens arrive incrementally."
+      }
+    }
+  ]
+}
