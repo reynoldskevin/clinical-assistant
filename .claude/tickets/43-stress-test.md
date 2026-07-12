@@ -16,7 +16,7 @@ against the DEPLOYED agent (`POST /ask` on the Railway sidecar), and record
 p50/p95/p99 latency and error rate at each level.
 
 Uses the T42 harness (`sidecar/perf/loadtest.py`) against the Railway deployment
-with a dev-mint JWT. Results recorded in `METRICS_WEEK1.md`.
+with a dev-mint JWT. Results recorded in `STRESS_TESTS.md`.
 
 ## Result (captured against Railway)
 - **10 concurrent** (30 req): p50 5.8s · p95 8.1s · p99 11.5s · error rate 0%.
