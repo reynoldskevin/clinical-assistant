@@ -1,13 +1,13 @@
 ---
 id: 40
 title: Separate /health (liveness) and /ready (dependency-checking) endpoints
-status: todo
+status: ready-for-merge
 depends_on: []
 branch: ticket/40-health-ready-endpoints
 base_branch: main
 test_command: "python -m pytest sidecar/tests/test_health_ready.py"
 full_suite_command: "python -m pytest -c sidecar/pytest.ini sidecar/tests"
-attempts: 0
+attempts: 1
 ---
 
 ## Description
