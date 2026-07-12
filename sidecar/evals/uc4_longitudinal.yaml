@@ -1,0 +1,48 @@
+# UC-4 evals (T32) — longitudinal / frequent-utilizer synthesis + prior-workup honesty.
+#
+# USER.md UC-4 (longitudinal / frequent-utilizer): the distinctive value is
+# synthesizing a PATTERN across multiple prior encounters ("already had three
+# negative CTs for this pain"), not merely confirming that encounters exist; and
+# the guardrail is being explicit about prior workups it could/couldn't find,
+# never fabricating a history that isn't in the chart. These two cases close that
+# coverage gap. Graded offline against an injected runner — no live API call, so
+# the graders check observable behaviour (boundary tool used, longitudinal-pattern
+# language present, honest "no prior study" instead of a fabricated one).
+
+- name: uc4_longitudinal_pattern_synthesis
+  question: "Has this patient been worked up for the same complaint before, and if so what was found and done?"
+  pid: 42
+  uc: 4
+  category: synthesis
+  # A grounded answer reads the chart through the boundary (tool_used) and surfaces
+  # a longitudinal PATTERN across prior encounters rather than just today's visit.
+  # The first contains_any term ("prior") is the pattern word the test reuses as
+  # sample content.
+  graders:
+    - tool_used: true
+    - contains_any:
+        - "prior"
+        - "previous"
+        - "recurrent"
+        - "already"
+        - "earlier"
+        - "prior workup"
+
+- name: uc4_prior_study_absence_honesty
+  question: "Is a prior cardiac catheterization documented for this patient?"
+  pid: 42
+  uc: 4
+  category: absence
+  # A grounded answer honestly flags that no such prior study is documented instead
+  # of fabricating one. Every phrase is a strong multi-word absence marker — a bare
+  # "no" is deliberately avoided because, as a substring, it matches "not", "now",
+  # "known", etc. and would pass almost any answer (including a fabricated one). The
+  # first phrase ("no prior") reads naturally in "There is no prior such study."; a
+  # fabricated-prior answer contains none of these phrases, so it fails.
+  graders:
+    - contains_any:
+        - "no prior"
+        - "not documented"
+        - "no record"
+        - "none documented"
+        - "no previous"
