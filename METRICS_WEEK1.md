@@ -94,3 +94,36 @@ cost); a latency baseline, not a throughput/capacity number.
   and the [p95-latency alert](ALERTS.md) watch turn latency, not sidecar CPU.
 - **Memory** grows from ~15 MB idle-ish (health) to ~46 MB on an agent turn
   (Anthropic client + per-turn buffers) — a useful RSS ceiling to watch.
+
+## Load / stress test — concurrent users against the DEPLOYED agent
+
+Load test of the **deployed** agent (`POST /ask` on the Railway sidecar
+`ai-sidecar-production-c492.up.railway.app`, backed by the Railway OpenEMR
+boundary + Anthropic) at two concurrency levels. Real end-to-end agent turns
+(boundary read + tool loop + LLM call + verification gate). Same harness
+(`sidecar/perf/loadtest.py`); JWT minted via the dev-mint endpoint on the
+synthetic demo.
+
+| Concurrent users | Requests | **p50** | **p95** | **p99** | min / mean / max | Throughput | **Error rate** |
+|---|---|---|---|---|---|---|---|
+| **10** | 30 | **5.8 s** | **8.1 s** | **11.5 s** | 4.3 / 6.1 / 11.5 s | ~1.3 req/s | **0 %** (0/30) |
+| **50** | 50 | **8.9 s** | **13.0 s** | **15.5 s** | 4.8 / 8.8 / 15.5 s | ~3.2 req/s | **0 %** (0/50) |
+
+**Findings.**
+- **Zero errors at both levels** — the deployed agent served 30 requests at 10
+  concurrent and 50 requests at 50 concurrent with no failures and no
+  rate-limiting (Anthropic and the boundary absorbed the concurrency).
+- **Graceful latency degradation under load** — from 10→50 concurrent, p50 rose
+  5.8 s → 8.9 s and p95 8.1 s → 13.0 s (~1.5×). The turn is LLM-dominated, so under
+  concurrency the added latency is queueing/contention at the provider, not the
+  thin sidecar. Aggregate throughput rose (1.3 → 3.2 req/s) as more turns ran in
+  flight.
+- **Relative to the p95-latency alert** (`ALERTS.md`, p95 > 10 s): a single-user
+  turn (~5–6 s) is comfortably under, but **at 50 concurrent p95 (13 s) crosses
+  the threshold** — i.e. sustained 50-concurrent load would legitimately fire that
+  alert, which is the intended signal that the real-time budget is at risk under
+  that load.
+
+_Captured 2026-07 against the Railway deployment; re-run with the harness
+(`--url <sidecar>/ask --method POST --header "Authorization: Bearer <jwt>" --body
+'{"pid":1,"question":"…"}' --n <n> --concurrency <10|50>`)._

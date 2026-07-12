@@ -32,3 +32,12 @@ def test_baselines_document_scenarios_and_percentiles():
     assert "scenario" in t
     # the harness that produced them is referenced so they can be re-run
     assert "loadtest" in t
+
+
+def test_documents_concurrent_user_stress_test_against_deployed_agent():
+    t = _text()
+    assert "deployed" in t
+    assert "concurrent" in t
+    assert "10" in t and "50" in t              # the two required concurrency levels
+    assert "p50" in t and "p95" in t and "p99" in t
+    assert "error rate" in t
