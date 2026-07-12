@@ -235,6 +235,7 @@ class ClaudeAgent:
         result = VerificationGate().verify(
             display_text, citations, retrieved_refs, retrieved_data
         )
+        self._observer.record_verification(result["verdict"])
         return result["rendered_answer"]
 
     def run(self, question: str, pid: int) -> str:
@@ -327,6 +328,7 @@ class ClaudeAgent:
                 # to the RETURNED string only (after gating, so grounding is
                 # untouched), and exactly one truncation event is emitted.
                 if tool_calls_made >= self._max_tool_calls:
+                    self._observer.record_truncated()
                     if on_event is not None:
                         on_event({"type": "truncated", "reason": "tool_budget"})
                     answer = answer + _TRUNCATION_NOTICE
@@ -335,6 +337,7 @@ class ClaudeAgent:
                 # turn, disclose that the answer may be incomplete. Appended to the
                 # RETURNED string only (after gating) and one degraded event emitted.
                 if tool_failure_seen:
+                    self._observer.record_degraded()
                     if on_event is not None:
                         on_event({"type": "degraded", "reason": "tool_failure"})
                     answer = answer + _DEGRADED_NOTICE

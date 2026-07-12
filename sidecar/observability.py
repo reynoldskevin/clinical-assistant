@@ -32,6 +32,18 @@ class NullObserver:
     def record_tool_call(self, name: str, ok: bool) -> None:
         """Ignore a tool call's outcome."""
 
+    def record_verification(self, verdict: str) -> None:
+        """Ignore the verification gate's verdict."""
+
+    def record_truncated(self) -> None:
+        """Ignore a truncated-turn signal."""
+
+    def record_degraded(self) -> None:
+        """Ignore a degraded-turn signal."""
+
+    def record_retry(self) -> None:
+        """Ignore a retry signal."""
+
 
 class NullTracer:
     """A tracer that opens no spans (the default, zero-overhead tracer).
@@ -56,6 +68,10 @@ class TraceCollector:
         self._output_tokens = 0
         self._tool_calls = 0
         self._tool_failures = 0
+        self._verification_verdict: str | None = None
+        self._truncated = False
+        self._degraded = False
+        self._retries = 0
 
     def record_model_response(self, input_tokens: int, output_tokens: int) -> None:
         """Record one model response and accumulate its token usage."""
@@ -68,6 +84,22 @@ class TraceCollector:
         self._tool_calls += 1
         if not ok:
             self._tool_failures += 1
+
+    def record_verification(self, verdict: str) -> None:
+        """Record the verification gate's verdict for this turn."""
+        self._verification_verdict = verdict
+
+    def record_truncated(self) -> None:
+        """Mark this turn as truncated (the tool budget was exhausted)."""
+        self._truncated = True
+
+    def record_degraded(self) -> None:
+        """Mark this turn as degraded (a record lookup failed)."""
+        self._degraded = True
+
+    def record_retry(self) -> None:
+        """Increment the retry counter for this turn."""
+        self._retries += 1
 
     def summary(self) -> dict[str, Any]:
         """Return accumulated metrics, including the derived USD cost."""
@@ -83,4 +115,8 @@ class TraceCollector:
             "cost_usd": cost_usd,
             "tool_calls": self._tool_calls,
             "tool_failures": self._tool_failures,
+            "verification_verdict": self._verification_verdict,
+            "truncated": self._truncated,
+            "degraded": self._degraded,
+            "retries": self._retries,
         }
