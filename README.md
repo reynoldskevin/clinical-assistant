@@ -18,6 +18,8 @@
 
 # OpenEMR Agent Forge
 
+Deployed demo viewable [here](https://truthful-peace-production-62af.up.railway.app/)
+
 ## Contents
 [Installation](#installation)\
 [Seeding demo data](#seeding-demo-data)\
