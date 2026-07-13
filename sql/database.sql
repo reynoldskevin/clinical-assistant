@@ -7771,8 +7771,10 @@ CREATE TABLE `log` (
   `log_from` VARCHAR(20) DEFAULT 'open-emr',
   `menu_item_id` INT(11) DEFAULT NULL,
   `ccda_doc_id` INT(11) DEFAULT NULL COMMENT 'CCDA document id from ccda',
+  `correlation_id` VARCHAR(64) DEFAULT NULL COMMENT 'Cross-system request trace id (e.g. AI-agent X-Correlation-ID)',
   PRIMARY KEY  (`id`),
-  KEY `patient_id` (`patient_id`)
+  KEY `patient_id` (`patient_id`),
+  KEY `correlation_id` (`correlation_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=1;
 
 
