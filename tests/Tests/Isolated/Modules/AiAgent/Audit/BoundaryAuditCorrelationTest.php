@@ -1,12 +1,13 @@
 <?php
 
 /**
- * T36 acceptance tests (LOCKED) — the boundary audit log records the correlation id.
+ * T36 acceptance tests — the boundary audit log records the correlation id.
  *
  * For a full trace reconstructable from logs alone, every `log` row the boundary
  * writes must carry the request's correlation id (forwarded from the sidecar as
  * the X-Correlation-ID header, T35). The id is a per-request property of the
- * logger (constructor), included in the `comments` column. DB-backed but
+ * logger (constructor), written to the dedicated `log.correlation_id` column so
+ * it is queryable directly rather than embedded in free text. DB-backed but
  * self-contained: a disposable throwaway schema with a cloned `log` table via an
  * injected PDO (the T10 pattern).
  *
@@ -82,9 +83,9 @@ final class BoundaryAuditCorrelationTest extends TestCase
         $this->connect(null)->exec('DROP DATABASE IF EXISTS `' . self::TEST . '`');
     }
 
-    private function comments(): string
+    private function row(): array
     {
-        return (string) $this->db->query('SELECT comments FROM `log`')->fetch()['comments'];
+        return (array) $this->db->query('SELECT comments, correlation_id FROM `log`')->fetch();
     }
 
     public function testGrantedRowRecordsTheCorrelationId(): void
@@ -92,9 +93,9 @@ final class BoundaryAuditCorrelationTest extends TestCase
         $logger = new DatabaseBoundaryAuditLogger($this->db, $this->clock(), 'cid-abc123');
         $logger->recordGranted($this->principal());
 
-        $comments = $this->comments();
-        $this->assertStringContainsString('cid-abc123', $comments);
-        $this->assertStringContainsString('treatment', $comments); // existing content preserved
+        $row = $this->row();
+        $this->assertSame('cid-abc123', $row['correlation_id']);
+        $this->assertStringContainsString('treatment', (string) $row['comments']); // comments untouched
     }
 
     public function testDeniedRowRecordsTheCorrelationId(): void
@@ -102,17 +103,17 @@ final class BoundaryAuditCorrelationTest extends TestCase
         $logger = new DatabaseBoundaryAuditLogger($this->db, $this->clock(), 'cid-deny-9');
         $logger->recordDenied(99, 'invalid or out-of-scope token');
 
-        $comments = $this->comments();
-        $this->assertStringContainsString('cid-deny-9', $comments);
-        $this->assertStringContainsString('out-of-scope', $comments);
+        $row = $this->row();
+        $this->assertSame('cid-deny-9', $row['correlation_id']);
+        $this->assertStringContainsString('out-of-scope', (string) $row['comments']);
     }
 
-    public function testNoCorrelationIdMeansNoCidMarker(): void
+    public function testNoCorrelationIdMeansNullColumn(): void
     {
-        // Backward compatible: constructed without a correlation id -> no cid= marker.
+        // Backward compatible: constructed without a correlation id -> NULL column.
         $logger = new DatabaseBoundaryAuditLogger($this->db, $this->clock());
         $logger->recordGranted($this->principal());
 
-        $this->assertStringNotContainsString('cid=', $this->comments());
+        $this->assertNull($this->row()['correlation_id']);
     }
 }

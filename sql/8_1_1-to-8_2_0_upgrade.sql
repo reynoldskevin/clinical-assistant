@@ -112,3 +112,8 @@
 --  #IfMBOEncounterNeeded
 --    desc: Add encounter to the form_misc_billing_options table
 --    arguments: none
+
+#IfMissingColumn log correlation_id
+ALTER TABLE `log` ADD COLUMN `correlation_id` VARCHAR(64) DEFAULT NULL COMMENT 'Cross-system request trace id (e.g. AI-agent X-Correlation-ID)';
+ALTER TABLE `log` ADD KEY `correlation_id` (`correlation_id`);
+#EndIf
