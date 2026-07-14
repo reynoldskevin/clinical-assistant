@@ -1,7 +1,7 @@
 ---
 id: 50
 title: Citation contract on every claim + record/evidence split in verification gate
-status: tests-authored
+status: ready-for-merge
 depends_on: [49]
 branch: ticket/50-citation-gate
 base_branch: main
