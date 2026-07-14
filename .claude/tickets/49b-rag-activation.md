@@ -1,13 +1,13 @@
 ---
 id: 49b
 title: Activation — wire the evidence_retriever guideline-RAG tool into the live Co-Pilot agent
-status: tests-authored
+status: ready-for-merge
 depends_on: [48]
 branch: ticket/49b-rag-activation
 base_branch: main
 test_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests/test_rag_activation.py -q"
 full_suite_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests -q"
-attempts: 0
+attempts: 1
 ---
 
 ## Description
