@@ -1,13 +1,13 @@
 ---
 id: 48
 title: Guideline corpus + hybrid retrieval (BM25 + dense) + Cohere rerank + evidence-retriever tool
-status: tests-authored
+status: ready-for-merge
 depends_on: []
 branch: ticket/48-hybrid-rag
 base_branch: main
 test_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests/test_retrieval.py -q"
 full_suite_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests -q"
-attempts: 0
+attempts: 1
 ---
 
 ## Description

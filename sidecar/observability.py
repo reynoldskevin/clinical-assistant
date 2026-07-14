@@ -72,6 +72,7 @@ class TraceCollector:
         self._truncated = False
         self._degraded = False
         self._retries = 0
+        self._retrieval_hits: list[Any] = []
 
     def record_model_response(self, input_tokens: int, output_tokens: int) -> None:
         """Record one model response and accumulate its token usage."""
@@ -101,6 +102,10 @@ class TraceCollector:
         """Increment the retry counter for this turn."""
         self._retries += 1
 
+    def record_retrieval(self, hits: Any) -> None:
+        """Record the evidence-retriever's returned hits (citation + score)."""
+        self._retrieval_hits.extend(hits)
+
     def summary(self) -> dict[str, Any]:
         """Return accumulated metrics, including the derived USD cost."""
         in_price, out_price = _PRICING.get(self._model, (0.0, 0.0))
@@ -119,4 +124,5 @@ class TraceCollector:
             "truncated": self._truncated,
             "degraded": self._degraded,
             "retries": self._retries,
+            "retrieval_hits": self._retrieval_hits,
         }

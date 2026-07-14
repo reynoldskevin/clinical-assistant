@@ -42,6 +42,15 @@ class SearchChartInput(BaseModel):
     limit: int = 20
 
 
+class EvidenceQueryInput(BaseModel):
+    """Evidence-retriever tool input (guideline corpus hybrid RAG)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    query: str
+    top_k: int = 3
+
+
 # --- OUTPUT models (extras ignored; known fields typed, Optional) ------------
 
 class MedicationRow(BaseModel):
