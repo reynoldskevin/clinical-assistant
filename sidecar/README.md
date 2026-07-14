@@ -82,3 +82,25 @@ No live API calls — the SDK client and the HTTP opener are injected fakes.
 ```bash
 etl/.venv/bin/pytest -c sidecar/pytest.ini sidecar/tests
 ```
+
+## Pre-push eval gate (git hook)
+
+The GitLab `eval:offline` job blocks merges on the deterministic offline eval
+suite (the 50-case golden set + boolean rubrics + per-rubric regression gate).
+`sidecar/hooks/pre-push` is the local mirror of that gate: it runs the same
+suite on `git push` and blocks the push on any failure, so a regression never
+leaves the machine.
+
+Install it once per clone:
+
+```bash
+sidecar/hooks/install.sh        # copies the hook into .git/hooks (or core.hooksPath)
+```
+
+It runs the suite on host Python when the sidecar deps are importable, otherwise
+falls back to the `w2-sidecar-test` container. Bypass sparingly, only when the
+push genuinely does not touch the gate:
+
+```bash
+git push --no-verify            # or:  SKIP_EVAL_GATE=1 git push
+```

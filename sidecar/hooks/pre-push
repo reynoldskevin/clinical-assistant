@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+#
+# Pre-push eval gate — the local, PR-blocking mirror of the GitLab `eval:offline`
+# job (.gitlab-ci.yml). Runs the deterministic, offline sidecar eval suite (the
+# 50-case golden set + boolean rubrics + per-rubric regression gate); a failure
+# BLOCKS the push, so a regression never leaves the machine.
+#
+# Install with `sidecar/hooks/install.sh`. Bypass sparingly, only when you know
+# the gate is irrelevant to the push:  git push --no-verify
+# (or `SKIP_EVAL_GATE=1 git push`).
+#
+set -euo pipefail
+
+if [ "${SKIP_EVAL_GATE:-0}" = "1" ]; then
+    echo "pre-push: SKIP_EVAL_GATE=1 — skipping the eval gate." >&2
+    exit 0
+fi
+
+repo_root="$(git rev-parse --show-toplevel)"
+sidecar="$repo_root/sidecar"
+
+echo "pre-push: running offline eval gate (50-case golden set + boolean rubrics)…" >&2
+
+# Prefer a host Python that can import the sidecar's deps; this is the exact
+# command the CI blocking gate runs.
+if python3 - <<'PY' >/dev/null 2>&1
+import importlib
+for m in ("pytest", "pydantic", "langgraph"):
+    importlib.import_module(m)
+PY
+then
+    exec python3 -m pytest -c "$sidecar/pytest.ini" "$sidecar/tests"
+fi
+
+# Fall back to the sidecar test container when the host Python lacks the deps
+# (see memory w2-test-runners): the repo is bind-mounted at /repo.
+if command -v docker >/dev/null 2>&1 \
+    && docker ps --format '{{.Names}}' | grep -qx w2-sidecar-test; then
+    echo "pre-push: host Python lacks deps — running in the w2-sidecar-test container." >&2
+    exec docker exec w2-sidecar-test sh -c 'cd /repo/sidecar && python -m pytest -c pytest.ini tests'
+fi
+
+echo "pre-push: ERROR — cannot run the eval gate (fail-closed)." >&2
+echo "  Provide one of:" >&2
+echo "    - host Python + deps:  pip install -r sidecar/requirements-dev.txt" >&2
+echo "    - the w2-sidecar-test container running" >&2
+echo "  Or, if this push genuinely does not need the gate:  git push --no-verify" >&2
+exit 1
