@@ -442,7 +442,13 @@
                 if (!data || !data.ok) {
                     throw new Error('upload rejected');
                 }
-                setStatus('Uploaded.', true);
+                // Confirm where the document was filed. setStatus writes via
+                // textContent, so the server-supplied category name is inserted
+                // as plain text — never interpreted as HTML.
+                setStatus(
+                    data.category ? ('Uploaded to ' + data.category + '.') : 'Uploaded.',
+                    true
+                );
                 uploadForm.reset();
             }).catch(function () {
                 setStatus('Upload failed. Please try again.', false);

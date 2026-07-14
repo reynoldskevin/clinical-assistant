@@ -111,6 +111,32 @@ $categoryName = $docType === 'lab_pdf' ? 'Lab Report' : 'Patient Information';
 $categoryRow = sqlQuery('SELECT id FROM categories WHERE name = ? LIMIT 1', [$categoryName]);
 $categoryId = (isset($categoryRow['id']) && is_numeric($categoryRow['id'])) ? (int) $categoryRow['id'] : 1;
 
+// Build the human-readable breadcrumb to the chosen category (e.g.
+// "Documents > Patient Information") so the widget can confirm exactly where the
+// file was filed. Walk the category nested set from the tree root down to the
+// chosen node: every category whose [lft, rght] span contains the node is an
+// ancestor-or-self, and ordering by lft yields root-first. The generic tree
+// root (parent 0) is presented as "Documents" — the section name the clinician
+// actually sees — and any real ancestor categories below it are included so a
+// nested category still renders its full path.
+$ancestors = sqlStatement(
+    'SELECT c.name, c.parent
+       FROM categories c
+       JOIN categories node ON node.id = ?
+      WHERE c.lft <= node.lft AND c.rght >= node.rght
+      ORDER BY c.lft',
+    [$categoryId]
+);
+$segments = ['Documents'];
+while ($row = sqlFetchArray($ancestors)) {
+    if ((int) $row['parent'] === 0) {
+        // The tree root is represented by the "Documents" segment above.
+        continue;
+    }
+    $segments[] = (string) $row['name'];
+}
+$categoryPath = implode(' > ', $segments);
+
 // 7. Store the file through OpenEMR's real document layer (audit trail, category,
 //    filesystem storage). createDocument() returns '' on success and an error
 //    string on failure; it sets foreign_id to the patient and links the category.
@@ -153,4 +179,7 @@ try {
     $fail(500, 'Could not store document');
 }
 
-echo json_encode(['ok' => true, 'id' => $documentId]);
+// Return the resolved category name so the widget can confirm to the clinician
+// exactly where the document was filed (the doc_type -> category mapping is not
+// otherwise visible on the card).
+echo json_encode(['ok' => true, 'id' => $documentId, 'category' => $categoryPath]);
