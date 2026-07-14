@@ -1,2 +1,7 @@
 # Local sidecar secrets (Anthropic API key etc.) — never committed.
 .env
+
+# Python bytecode caches and test runner artifacts.
+__pycache__/
+*.pyc
+.pytest_cache/
