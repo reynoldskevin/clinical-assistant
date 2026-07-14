@@ -101,6 +101,16 @@ final class ChartReadEndpointTest extends TestCase
                 $this->calls[] = ['search_chart', $pid, $limit];
                 return [['ref' => 'pnote:1', 'source_type' => 'note', 'pid' => $pid]];
             }
+            public function getDocuments(int $pid): array
+            {
+                $this->calls[] = ['get_documents', $pid, 0];
+                return [['id' => 501, 'pid' => $pid]];
+            }
+            public function getDocument(int $pid, int $documentId): array
+            {
+                $this->calls[] = ['get_document', $pid, $documentId];
+                return ['id' => $documentId, 'pid' => $pid];
+            }
         };
     }
 

@@ -27,4 +27,6 @@ enum ChartOperation: string
     case GetResults = 'get_results';
     case GetMedications = 'get_medications';
     case SearchChart = 'search_chart';
+    case GetDocuments = 'get_documents';
+    case GetDocument = 'get_document';
 }

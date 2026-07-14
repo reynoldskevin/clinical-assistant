@@ -1,13 +1,13 @@
 ---
 id: 46
 title: UI file upload + document read boundary (get_documents/get_document)
-status: tests-authored
+status: ready-for-merge
 depends_on: []
 branch: ticket/46-ui-upload
 base_branch: main
 test_command: "docker exec -w /var/www/localhost/htdocs/openemr development-easy-openemr-1 vendor/bin/phpunit -c phpunit-isolated.xml --filter 'ChartReadServiceDocumentsTest|ChartReadEndpointDocumentsTest' ; docker exec w2-sidecar-test python -m pytest -c pytest.ini tests/test_documents_tools.py -q"
 full_suite_command: "docker exec -w /var/www/localhost/htdocs/openemr development-easy-openemr-1 vendor/bin/phpunit -c phpunit-isolated.xml ; docker exec w2-sidecar-test python -m pytest -c pytest.ini tests -q"
-attempts: 0
+attempts: 2
 ---
 
 ## Description

@@ -222,6 +222,47 @@ final class PatientSummaryService implements ChartReadProviderInterface
     }
 
     /**
+     * List this patient's documents as metadata only, most-recent-first by date.
+     * Deleted rows are excluded. The document_data blob is NEVER selected here
+     * (minimum-necessary); doc_type is carried on the `documentationOf` column
+     * that the upload endpoint records the chosen doc_type into.
+     *
+     * @return list<array{id: int, name: string, mimetype: string, docdate: mixed, doc_type: mixed}>
+     */
+    public function getDocuments(int $pid): array
+    {
+        /** @var list<array{id: int, name: string, mimetype: string, docdate: mixed, doc_type: mixed}> */
+        return $this->fetchList(
+            'SELECT id, name, mimetype, docdate, documentationOf AS doc_type FROM documents '
+            . 'WHERE foreign_id = ? AND deleted = 0 ORDER BY date DESC',
+            $pid
+        );
+    }
+
+    /**
+     * One document's content by id. The pid scope is the security boundary: a
+     * document id belonging to a different patient (or a deleted/missing one)
+     * yields no row (returns []), so a model-chosen id can never cross charts.
+     * Carries the document_data blob for downstream extraction.
+     *
+     * @return array<string, mixed>
+     */
+    public function getDocument(int $pid, int $documentId): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT id, name, mimetype, docdate, documentationOf AS doc_type, document_data '
+            . 'FROM documents WHERE foreign_id = ? AND id = ? AND deleted = 0'
+        );
+        $stmt->bindValue(1, $pid, \PDO::PARAM_INT);
+        $stmt->bindValue(2, $documentId, \PDO::PARAM_INT);
+        $stmt->execute();
+
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        return is_array($row) ? $row : [];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function demographics(int $pid): array

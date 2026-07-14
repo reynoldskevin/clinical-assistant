@@ -45,4 +45,21 @@ interface ChartReadProviderInterface extends PatientSummaryProviderInterface
      * @return list<array{ref: string, source_type: string, date: mixed, snippet: string}>
      */
     public function searchChart(int $pid, string $query, int $limit): array;
+
+    /**
+     * List the patient's documents as metadata only, most-recent-first. Never
+     * carries the document_data blob (minimum-necessary).
+     *
+     * @return list<array{id: int, name: string, mimetype: string, docdate: mixed, doc_type: mixed}>
+     */
+    public function getDocuments(int $pid): array;
+
+    /**
+     * One document's content by id, pid-scoped. Returns [] when the id is not
+     * this patient's / missing / deleted. Carries the document_data blob for
+     * downstream extraction.
+     *
+     * @return array<string, mixed>
+     */
+    public function getDocument(int $pid, int $documentId): array;
 }
