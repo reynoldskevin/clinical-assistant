@@ -69,7 +69,11 @@
             + 'margin-right:0.45em;vertical-align:-0.1em;border:2px solid rgba(0,0,0,0.2);'
             + 'border-top-color:#337ab7;border-radius:50%;'
             + 'animation:oe-ai-agent-spin 0.7s linear infinite}'
-            + '.oe-ai-agent-answer:not(:empty){margin-bottom:0.75em}';
+            + '.oe-ai-agent-answer:not(:empty){margin-bottom:0.75em}'
+            // Once the upload status has content, it takes the label's place:
+            // hide the adjacent "Upload a document" label so the message sits
+            // directly against the doc-type dropdown.
+            + '.oe-ai-agent-upload-status:not(:empty)+.oe-ai-agent-upload-label{display:none}';
         (document.head || document.documentElement).appendChild(style);
     })();
 
