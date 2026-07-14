@@ -10,9 +10,13 @@ candidates, and returns the top-k grounded chunks.
 Everything on the tested path is pure-Python + stdlib + pydantic: BM25, the
 vector index, the stub embedder, and the stub reranker are implemented here so
 offline CI needs no numpy/hnswlib/rank_bm25/cohere and no network or API keys.
-The real Cohere reranker (``CohereReranker``) imports the ``cohere`` SDK LAZILY
-inside ``.rerank`` — mirroring ``factory.build_message_creator`` — so
-constructing it (and importing this module) never requires the SDK.
+The real Cohere backends — ``CohereReranker`` and ``CohereEmbeddingClient`` —
+import the ``cohere`` SDK LAZILY inside their ``.rerank``/``.embed`` methods
+(mirroring ``factory.build_message_creator``), so constructing them (and
+importing this module) never requires the SDK. ``build_embedding_client`` and
+``build_reranker`` pick the real backend only when ``COHERE_API_KEY`` is set and
+the SDK imports, degrading to the deterministic stubs otherwise; the production
+singleton ``get_guideline_index`` wires the chosen embedder in.
 """
 from __future__ import annotations
 
@@ -128,6 +132,62 @@ class StubEmbeddingClient:
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         return [self._embed_one(t) for t in texts]
+
+
+class CohereEmbeddingClient:
+    """Cohere-backed dense embeddings. LAZY: imports ``cohere`` only in ``.embed``.
+
+    Mirrors ``CohereReranker`` — constructing this class never imports the SDK
+    or touches the network; only ``.embed`` imports cohere and calls the API.
+    Returns float vectors of uniform, model-defined dimensionality, ready for the
+    in-process cosine index. ``input_type`` is Cohere's asymmetric-search hint;
+    the corpus is embedded as ``search_document`` and, because ``hybrid_retrieve``
+    reuses the index's client to embed the query, that same value applies to the
+    query too — acceptable for this small corpus (documents and queries share the
+    embedding space) and kept uniform to honour the ``EmbeddingClient`` protocol.
+    """
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: str = "embed-english-v3.0",
+        input_type: str = "search_document",
+    ) -> None:
+        self._api_key = api_key
+        self._model = model
+        self._input_type = input_type
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []  # short-circuit before any SDK import or network call
+        import cohere  # lazy: only needed when actually embedding via the API
+
+        client = cohere.Client(self._api_key or os.environ.get("COHERE_API_KEY"))
+        response = client.embed(
+            texts=texts,
+            model=self._model,
+            input_type=self._input_type,
+            embedding_types=["float"],
+        )
+        return [[float(x) for x in vec] for vec in response.embeddings.float]
+
+
+def build_embedding_client() -> EmbeddingClient:
+    """Return a Cohere embedder when configured, else the deterministic stub.
+
+    Mirrors ``build_reranker``: only when ``COHERE_API_KEY`` is set AND the
+    ``cohere`` SDK imports successfully do we return a ``CohereEmbeddingClient``;
+    any missing key or import failure degrades to ``StubEmbeddingClient`` so the
+    offline CI path needs no key and stays deterministic.
+    """
+    if not os.environ.get("COHERE_API_KEY"):
+        return StubEmbeddingClient()
+    try:
+        import cohere  # noqa: F401 - presence check only; imported lazily in embed
+
+        return CohereEmbeddingClient()
+    except Exception:  # noqa: BLE001 - never let a missing SDK break the offline path
+        return StubEmbeddingClient()
 
 
 # --- in-process cosine-similarity vector index --------------------------------
@@ -337,11 +397,14 @@ def get_guideline_index() -> RetrievalIndex:
 
     Builds the committed 9-chunk corpus via ``build_index()`` on first call and
     memoizes it in the module-global ``_GUIDELINE_INDEX``; subsequent calls
-    return the same object without rebuilding.
+    return the same object without rebuilding. The dense embedder is chosen by
+    ``build_embedding_client()`` — the real Cohere embedder when ``COHERE_API_KEY``
+    is set, else the deterministic stub — so production gets real embeddings while
+    offline CI stays key-free and reproducible.
     """
     global _GUIDELINE_INDEX
     if _GUIDELINE_INDEX is None:
-        _GUIDELINE_INDEX = build_index()
+        _GUIDELINE_INDEX = build_index(embedding_client=build_embedding_client())
     return _GUIDELINE_INDEX
 
 
