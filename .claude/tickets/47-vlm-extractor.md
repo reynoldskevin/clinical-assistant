@@ -1,13 +1,13 @@
 ---
 id: 47
 title: VLM extractor → strict LabFact/IntakeFact schemas (canonical contract)
-status: tests-authored
+status: ready-for-merge
 depends_on: [46]
 branch: ticket/47-vlm-extractor
 base_branch: ticket/46-ui-upload
 test_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests/test_extractor.py -q"
 full_suite_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests -q"
-attempts: 0
+attempts: 1
 ---
 
 ## Description

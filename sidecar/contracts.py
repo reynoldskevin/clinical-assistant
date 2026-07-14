@@ -12,7 +12,7 @@ what the agent ultimately receives.
 """
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 
 # --- INPUT models (strict: unknown fields rejected) --------------------------
@@ -112,6 +112,48 @@ class PatientSummary(BaseModel):
     medications: Optional[list] = None
     allergies: Optional[list] = None
     vitals: Optional[list] = None
+
+
+# --- STRICT extraction contracts (VLM output; schema is the source of truth) --
+
+class LabFact(BaseModel):
+    """A single lab result extracted from a document by the VLM.
+
+    STRICT contract (``extra="forbid"``): the VLM cannot smuggle unknown fields,
+    and every named field is a required KEY. Groundable-but-absent fields are
+    typed ``Optional[str]`` with NO default, so a value the VLM cannot ground is
+    explicitly ``null`` (and surfaced via ``unsupported_fields``), never invented
+    or silently defaulted. ``source_citation`` is required AND non-null with a
+    ``min_length`` constraint — grounding is mandatory, empty strings rejected.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    test_name: Optional[str]
+    value: Optional[str]
+    unit: Optional[str]
+    reference_range: Optional[str]
+    collection_date: Optional[str]
+    abnormal_flag: Optional[str]
+    source_citation: str = Field(min_length=1)
+
+
+class IntakeFact(BaseModel):
+    """Structured intake-form facts extracted from a document by the VLM.
+
+    STRICT contract (``extra="forbid"``): unknown fields rejected, every named
+    field a required KEY, groundable-but-absent fields ``null`` (not invented).
+    ``source_citation`` is required, non-null, and non-empty (``min_length``).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    demographics: Optional[str]
+    chief_concern: Optional[str]
+    current_medications: Optional[str]
+    allergies: Optional[str]
+    family_history: Optional[str]
+    source_citation: str = Field(min_length=1)
 
 
 # --- validate-and-passthrough helpers ----------------------------------------
