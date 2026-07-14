@@ -37,6 +37,7 @@ from factory import (
     new_correlation_id,
 )
 from observability import TraceCollector
+from retrieval import build_evidence_retriever_tool, get_guideline_index
 
 # An agent-builder maps (pid, jwt) -> an object with .run(question, pid) -> str.
 AgentBuilder = Callable[[int, str], Any]
@@ -396,8 +397,9 @@ def default_agent_builder(
 
     The agent gets the built-in summary tool plus the operation-dispatched chart
     tools (list_encounters / get_encounter) that POST to read.php with the same
-    forwarded JWT. ``read_url`` defaults to the summary URL with ``summary.php``
-    swapped for ``read.php``.
+    forwarded JWT, plus the ``evidence_retriever`` guideline-evidence tool that
+    runs hybrid retrieval over the shared, build-once guideline index. ``read_url``
+    defaults to the summary URL with ``summary.php`` swapped for ``read.php``.
     """
     chart_url = read_url or summary_url.replace("summary.php", "read.php")
     # Per-turn tool-execution budget; overridable via env (defaults to 8).
@@ -407,17 +409,23 @@ def default_agent_builder(
         cid = new_correlation_id()
         boundary = build_boundary(summary_url, jwt, correlation_id=cid)
         chart_boundary = build_chart_boundary(chart_url, jwt, correlation_id=cid)
+        observer = TraceCollector()
         return ClaudeAgent(
             message_creator,
             boundary,
-            observer=TraceCollector(),
+            observer=observer,
             extra_tools=build_encounter_tools(chart_boundary)
             + [
                 build_results_tool(chart_boundary),
                 build_medications_tool(chart_boundary),
                 build_search_tool(chart_boundary),
             ]
-            + build_documents_tools(chart_boundary),
+            + build_documents_tools(chart_boundary)
+            + [
+                build_evidence_retriever_tool(
+                    get_guideline_index(), tracer=observer
+                )
+            ],
             max_tool_calls=max_tool_calls,
             correlation_id=cid,
         )

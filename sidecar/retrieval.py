@@ -324,6 +324,27 @@ def build_index(
     )
 
 
+# --- build-once guideline index singleton -------------------------------------
+
+# Process-wide cache for the committed guideline corpus index. Built lazily on
+# first use and reused across every request so the index is never rebuilt per
+# ``/ask``.
+_GUIDELINE_INDEX: Optional[RetrievalIndex] = None
+
+
+def get_guideline_index() -> RetrievalIndex:
+    """Return the shared guideline index, building it once on first call.
+
+    Builds the committed 9-chunk corpus via ``build_index()`` on first call and
+    memoizes it in the module-global ``_GUIDELINE_INDEX``; subsequent calls
+    return the same object without rebuilding.
+    """
+    global _GUIDELINE_INDEX
+    if _GUIDELINE_INDEX is None:
+        _GUIDELINE_INDEX = build_index()
+    return _GUIDELINE_INDEX
+
+
 # --- rerankers ----------------------------------------------------------------
 
 class StubReranker:
