@@ -1,7 +1,7 @@
 ---
 id: 50b
 title: Activation — surface T50 structured citations + record/evidence split in the live Co-Pilot answer
-status: tests-authored
+status: ready-for-merge
 depends_on: [50]
 branch: ticket/50b-citation-activation
 base_branch: main

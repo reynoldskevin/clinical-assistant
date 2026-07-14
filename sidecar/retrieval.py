@@ -498,8 +498,9 @@ def build_evidence_retriever_tool(
     ``EvidenceQueryInput`` (strict + required ``query``); the effective top-k is
     the build-time ``k`` by default, overridden by an EXPLICIT ``top_k`` in the
     tool input (detected via ``model_fields_set``). Returns JSON-serializable
-    rows ``{citation, text, score}`` and, when a ``tracer`` is given, records the
-    hits via ``tracer.record_retrieval``.
+    rows ``{ref, citation, text, score}`` — each ``ref`` a citable
+    ``guideline:<chunk_id>`` so a guideline ``[Sn]`` can be grounded — and, when a
+    ``tracer`` is given, records the hits via ``tracer.record_retrieval``.
     """
 
     def handler(pid: int, inp: Any) -> list[dict[str, Any]]:
@@ -507,7 +508,12 @@ def build_evidence_retriever_tool(
         top_k = data.top_k if "top_k" in data.model_fields_set else k
         hits = hybrid_retrieve(data.query, index, reranker=reranker, k=top_k)
         rows = [
-            {"citation": h.citation, "text": h.text, "score": h.score}
+            {
+                "ref": "guideline:" + h.chunk.chunk_id,
+                "citation": h.citation,
+                "text": h.text,
+                "score": h.score,
+            }
             for h in hits
         ]
         if tracer is not None:
