@@ -8,3 +8,6 @@ braintrust>=0.0.170
 # Optional evidence-retriever rerank backend: only used when COHERE_API_KEY is
 # set (imported lazily inside CohereReranker.rerank). CI runs without it.
 cohere>=5
+# Multi-agent supervisor/worker runtime (T49 LangGraph graph). Its langchain-core
+# dependency comes transitively.
+langgraph>=1,<2

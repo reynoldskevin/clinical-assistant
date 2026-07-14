@@ -1,13 +1,13 @@
 ---
 id: 49
 title: LangGraph supervisor + intake-extractor/evidence-retriever workers (logged handoffs)
-status: tests-authored
+status: ready-for-merge
 depends_on: [47, 48]
 branch: ticket/49-supervisor-graph
 base_branch: main
 test_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests/test_graph.py -q"
 full_suite_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests -q"
-attempts: 0
+attempts: 1
 ---
 
 ## Description
