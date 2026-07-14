@@ -5,3 +5,6 @@ anthropic>=0.40
 pydantic>=2,<3
 # Optional LLM observability: only used when BRAINTRUST_API_KEY is set.
 braintrust>=0.0.170
+# Optional evidence-retriever rerank backend: only used when COHERE_API_KEY is
+# set (imported lazily inside CohereReranker.rerank). CI runs without it.
+cohere>=5
