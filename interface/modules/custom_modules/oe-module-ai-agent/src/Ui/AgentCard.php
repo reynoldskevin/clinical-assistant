@@ -64,6 +64,7 @@ final class AgentCard
                 accept="application/pdf,image/*" aria-label="Upload a document">
             <button type="submit" class="oe-ai-agent-upload-submit btn btn-secondary btn-sm">Upload</button>
         </form>
+        <div class="oe-ai-agent-extract mt-2" role="status" aria-live="polite"></div>
     </div>
     <script src="../../../interface/modules/custom_modules/oe-module-ai-agent/public/agent-widget.js?v={$version}"></script>
 </div>

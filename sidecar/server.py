@@ -38,9 +38,18 @@ from factory import (
 )
 from observability import TraceCollector
 from retrieval import build_evidence_retriever_tool, get_guideline_index
+from extractor import attach_and_extract
+
+from pydantic import ValidationError
 
 # An agent-builder maps (pid, jwt) -> an object with .run(question, pid) -> str.
 AgentBuilder = Callable[[int, str], Any]
+
+# An extract-fn maps (pid, jwt, document_id, doc_type) -> a JSON-safe result dict.
+ExtractFn = Callable[[int, str, int, str], dict[str, Any]]
+
+# The closed set of document types the extractor understands (mirrors upload.php).
+_DOC_TYPES = ("lab_pdf", "intake_form")
 
 _BEARER_PREFIX = "Bearer "
 
@@ -433,16 +442,132 @@ def default_agent_builder(
     return build
 
 
+# A parsed, valid extract request: (jwt, pid, document_id, doc_type).
+ParsedExtractRequest = tuple[str, int, int, str]
+
+
+def _parse_extract_request(
+    authorization: str,
+    raw_body: bytes,
+) -> tuple[int, dict[str, Any]] | ParsedExtractRequest:
+    """Validate an /extract request's auth + body.
+
+    Returns a ``(status, {"error": ...})`` tuple on failure, or the parsed
+    request tuple on success. Callers distinguish the two by length: an error
+    tuple has two elements. The pid is taken from the body (like /ask) and the
+    boundary re-checks the JWT scope on the ``get_document`` read, so a token
+    minted for another patient is rejected at the boundary, not trusted here.
+    """
+    if not authorization.startswith(_BEARER_PREFIX):
+        return 401, {"error": "missing bearer token"}
+    jwt = authorization[len(_BEARER_PREFIX):].strip()
+    if jwt == "":
+        return 401, {"error": "missing bearer token"}
+
+    try:
+        data = json.loads(raw_body or b"{}")
+        pid = int(data.get("pid", 0))
+        document_id = int(data.get("document_id", 0))
+        doc_type = str(data.get("doc_type", "")).strip()
+    except (ValueError, TypeError, AttributeError, json.JSONDecodeError):
+        return 400, {"error": "invalid request"}
+
+    if pid <= 0 or document_id <= 0 or doc_type not in _DOC_TYPES:
+        return 400, {"error": "pid, document_id and a valid doc_type are required"}
+
+    return jwt, pid, document_id, doc_type
+
+
+def process_extract(
+    authorization: str,
+    raw_body: bytes,
+    extract_fn: ExtractFn,
+) -> tuple[int, dict[str, Any]]:
+    """Validate an /extract request and run the VLM extractor. Returns (status, body).
+
+    Pure apart from the injected ``extract_fn`` (no sockets), so it is directly
+    unit-testable. On success returns the strict, validated fact envelope; never
+    surfaces internal error detail to the caller. A schema-invalid extraction
+    (the VLM omitted a required field or invented an extra one — the contract's
+    own guarantee) is reported as a 422 the card can show as "couldn't extract",
+    distinct from a 502 for an unavailable extractor/boundary/VLM.
+    """
+    parsed = _parse_extract_request(authorization, raw_body)
+    if len(parsed) == 2:
+        status, body = parsed  # type: ignore[misc]
+        return status, body
+    jwt, pid, document_id, doc_type = parsed  # type: ignore[misc]
+
+    try:
+        body = extract_fn(pid, jwt, document_id, doc_type)
+    except (ValidationError, ValueError, KeyError) as e:
+        # The extraction ran but did not yield a contract-valid fact (missing/
+        # hallucinated field, malformed VLM envelope). Not an outage — tell the
+        # caller it couldn't be extracted, without leaking which field or why.
+        logging.getLogger("sidecar").warning(
+            "extract produced no valid fact pid=%s doc=%s: %s", pid, document_id, type(e).__name__
+        )
+        return 422, {"error": "could not extract a valid fact from this document"}
+    except Exception:  # noqa: BLE001 - never leak boundary/API detail to the browser
+        logging.getLogger("sidecar").exception(
+            "extract failed pid=%s doc=%s", pid, document_id
+        )
+        return 502, {"error": "document extraction is unavailable"}
+
+    return 200, body
+
+
+def default_extract_builder(
+    summary_url: str,
+    message_creator: Any,
+    read_url: str | None = None,
+) -> ExtractFn:
+    """Build the extract-fn: fetch the stored document pid-scoped and extract it.
+
+    Mirrors ``default_agent_builder``'s wiring — a per-request ``chart_boundary``
+    bound to the forwarded JWT (so the ``get_document`` read re-checks the token
+    scope at read.php) plus the shared VLM ``message_creator``. Returns the
+    validated ``LabFact``/``IntakeFact`` as a JSON-safe envelope.
+    """
+    chart_url = read_url or summary_url.replace("summary.php", "read.php")
+
+    def extract(pid: int, jwt: str, document_id: int, doc_type: str) -> dict[str, Any]:
+        cid = new_correlation_id()
+        chart_boundary = build_chart_boundary(chart_url, jwt, correlation_id=cid)
+        result = attach_and_extract(
+            pid,
+            document_id,
+            doc_type,
+            chart_boundary=chart_boundary,
+            message_creator=message_creator,
+        )
+        # Only the validated fact + PHI-free telemetry cross back to the browser;
+        # never the raw document bytes or the VLM's unparsed text.
+        return {
+            "ok": True,
+            "doc_type": result.doc_type,
+            "confidence": result.confidence,
+            "unsupported_fields": result.unsupported_fields,
+            "fact": result.fact.model_dump(),
+            "correlation_id": cid,
+        }
+
+    return extract
+
+
 def make_handler(
     agent_builder: AgentBuilder,
     allow_origin: str,
     store: ConversationStore | None = None,
     tracer: Any = None,
+    extract_fn: ExtractFn | None = None,
 ) -> type[BaseHTTPRequestHandler]:
     """Create a request-handler class bound to an agent-builder and CORS origin.
 
     An optional ``ConversationStore`` enables multi-turn context for requests
-    that carry a ``conversation_id``.
+    that carry a ``conversation_id``. An optional ``extract_fn`` enables the
+    ``POST /extract`` document-extraction endpoint (auto-extract on upload); when
+    it is ``None`` that route replies 404 like any other unknown path.
     """
 
     class Handler(BaseHTTPRequestHandler):
@@ -489,12 +614,22 @@ def make_handler(
 
         def do_POST(self) -> None:  # noqa: N802 (http.server naming)
             path = self.path.rstrip("/")
-            if path not in ("/ask", "/ask/stream"):
+            extract_enabled = extract_fn is not None
+            valid_paths = ("/ask", "/ask/stream")
+            if extract_enabled:
+                valid_paths = valid_paths + ("/extract",)
+            if path not in valid_paths:
                 self._send_json(404, {"error": "not found"})
                 return
             length = int(self.headers.get("Content-Length", "0") or "0")
             raw_body = self.rfile.read(length) if length > 0 else b""
             authorization = self.headers.get("Authorization", "")
+
+            if path == "/extract":
+                assert extract_fn is not None  # narrowed by valid_paths above
+                status, body = process_extract(authorization, raw_body, extract_fn)
+                self._send_json(status, body)
+                return
 
             if path == "/ask/stream":
                 # This streamed response has no Content-Length and is not chunked,
@@ -588,6 +723,7 @@ def main() -> None:
         allow_origin,
         store,
         tracer,
+        default_extract_builder(summary_url, message_creator, read_url),
     )
     server = ThreadingHTTPServer((host, port), handler)
     print(f"AI sidecar listening on http://{host}:{port}/ask -> {summary_url}", flush=True)

@@ -41,6 +41,9 @@
     // The SSE endpoint is derived from the same base as the buffered /ask URL, so
     // a deployment that overrides data-sidecar-url need only set it once.
     var streamUrl = sidecarUrl.replace(/\/ask\/?$/, '/ask/stream');
+    // The document-extraction endpoint is derived the same way, so auto-extract
+    // on upload follows the same sidecar base as /ask.
+    var extractUrl = sidecarUrl.replace(/\/ask\/?$/, '/extract');
 
     // One conversation id per card instance (per page load), sent with every
     // question so the sidecar can carry context across follow-ups within its
@@ -407,6 +410,7 @@
         var docTypeSelect = uploadForm.querySelector('.oe-ai-agent-doc-type');
         var uploadSubmit = uploadForm.querySelector('.oe-ai-agent-upload-submit');
         var status = uploadForm.querySelector('.oe-ai-agent-upload-status');
+        var extractBox = root.querySelector('.oe-ai-agent-extract');
         if (!fileInput || !docTypeSelect || !status) {
             return;
         }
@@ -416,6 +420,153 @@
             status.style.color = ok ? '#3c763d' : '#a94442';
         }
 
+        // The human-readable field order per doc_type (matches the LabFact /
+        // IntakeFact contracts). Anything not listed is appended after these.
+        var FACT_FIELDS = {
+            lab_pdf: ['test_name', 'value', 'unit', 'reference_range',
+                'collection_date', 'abnormal_flag', 'source_citation'],
+            intake_form: ['demographics', 'chief_concern', 'current_medications',
+                'allergies', 'family_history', 'source_citation']
+        };
+
+        function humanize(key) {
+            return key.replace(/_/g, ' ').replace(/\b\w/g, function (c) {
+                return c.toUpperCase();
+            });
+        }
+
+        // Render a value as plain text: strings verbatim, null/'' as an em dash,
+        // objects/arrays as compact JSON. Always returned as a string for
+        // textContent — never inserted as HTML.
+        function valueText(value) {
+            if (value === null || value === undefined || value === '') {
+                return '—';
+            }
+            if (typeof value === 'string') {
+                return value;
+            }
+            try {
+                return JSON.stringify(value);
+            } catch (e) {
+                return String(value);
+            }
+        }
+
+        // Clear the extraction panel and its status.
+        function clearExtract() {
+            if (extractBox) {
+                extractBox.textContent = '';
+            }
+        }
+
+        function setExtractNote(text, ok) {
+            if (!extractBox) {
+                return;
+            }
+            extractBox.textContent = '';
+            var note = document.createElement('div');
+            note.className = 'small';
+            note.style.color = ok ? '#31708f' : '#a94442';
+            note.textContent = text;
+            extractBox.appendChild(note);
+        }
+
+        // Render a validated LabFact / IntakeFact envelope as a small facts panel.
+        // Built entirely with createElement + textContent, so no server- or
+        // model-supplied value is ever interpreted as HTML.
+        function renderExtraction(data) {
+            if (!extractBox) {
+                return;
+            }
+            extractBox.textContent = '';
+
+            var panel = document.createElement('div');
+            panel.className = 'card card-body p-2 small';
+
+            var heading = document.createElement('div');
+            heading.className = 'font-weight-bold mb-1';
+            var label = data.doc_type === 'lab_pdf' ? 'Extracted lab result' : 'Extracted intake facts';
+            var pct = Math.round((Number(data.confidence) || 0) * 100);
+            heading.textContent = label + ' · confidence ' + pct + '%';
+            panel.appendChild(heading);
+
+            var fact = data.fact || {};
+            var order = FACT_FIELDS[data.doc_type] || [];
+            var keys = order.filter(function (k) {
+                return Object.prototype.hasOwnProperty.call(fact, k);
+            });
+            Object.keys(fact).forEach(function (k) {
+                if (keys.indexOf(k) === -1) {
+                    keys.push(k);
+                }
+            });
+
+            var dl = document.createElement('dl');
+            dl.className = 'row mb-0';
+            keys.forEach(function (k) {
+                var dt = document.createElement('dt');
+                dt.className = 'col-5 text-muted text-truncate';
+                dt.textContent = humanize(k);
+                var dd = document.createElement('dd');
+                dd.className = 'col-7 mb-1';
+                dd.textContent = valueText(fact[k]);
+                dl.appendChild(dt);
+                dl.appendChild(dd);
+            });
+            panel.appendChild(dl);
+
+            var unsupported = data.unsupported_fields || [];
+            if (unsupported.length) {
+                var flagged = document.createElement('div');
+                flagged.className = 'text-muted font-italic mt-1';
+                flagged.textContent = 'Left blank (not grounded in the document): '
+                    + unsupported.map(humanize).join(', ') + '.';
+                panel.appendChild(flagged);
+            }
+
+            extractBox.appendChild(panel);
+        }
+
+        // After a successful store, mint a patient-scoped JWT and ask the sidecar
+        // to extract strict facts from the freshly-uploaded document. The pid is
+        // sent from the card (as /ask does); the boundary re-checks the token
+        // scope on the document read, so it can only reach the patient in context.
+        function extractDocument(documentId, docType) {
+            if (!extractBox || !documentId) {
+                return;
+            }
+            setExtractNote('Extracting facts from the document...', true);
+            mintToken().then(function (jwt) {
+                return fetch(extractUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + jwt
+                    },
+                    body: JSON.stringify({
+                        pid: parseInt(root.dataset.pid, 10),
+                        document_id: documentId,
+                        doc_type: docType
+                    })
+                });
+            }).then(function (res) {
+                return res.json().then(function (body) {
+                    return { ok: res.ok, body: body };
+                });
+            }).then(function (result) {
+                if (!result.ok || !result.body || !result.body.ok) {
+                    // 422 means the document couldn't be extracted cleanly; any
+                    // other failure is a generic unavailability. Either way, no
+                    // internal detail is surfaced.
+                    setExtractNote('Stored, but automatic extraction did not produce a valid result.', false);
+                    return;
+                }
+                renderExtraction(result.body);
+            }).catch(function () {
+                setExtractNote('Stored, but automatic extraction is unavailable right now.', false);
+            });
+        }
+
         uploadForm.addEventListener('submit', function (evt) {
             evt.preventDefault();
             var file = fileInput.files && fileInput.files[0];
@@ -423,15 +574,19 @@
                 setStatus('Choose a file to upload.', false);
                 return;
             }
+            // Capture the chosen doc_type before reset() clears the form, so the
+            // extraction call uses the type the file was actually filed under.
+            var docType = docTypeSelect.value;
             var payload = new FormData();
             payload.append('csrf_token', csrfToken);
-            payload.append('doc_type', docTypeSelect.value);
+            payload.append('doc_type', docType);
             payload.append('document', file);
 
             if (uploadSubmit) {
                 uploadSubmit.disabled = true;
             }
             setStatus('Uploading...', true);
+            clearExtract();
 
             fetch(uploadUrl, {
                 method: 'POST',
@@ -454,6 +609,8 @@
                     true
                 );
                 uploadForm.reset();
+                // Auto-extract strict facts from the just-stored document.
+                extractDocument(data.id, docType);
             }).catch(function () {
                 setStatus('Upload failed. Please try again.', false);
             }).finally(function () {
