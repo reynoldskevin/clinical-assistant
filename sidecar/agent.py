@@ -252,6 +252,14 @@ class ClaudeAgent:
         self._observer.record_verification(result["verdict"])
         rendered = result["rendered_answer"]
 
+        # A blocked verdict replaces the unverified draft with the safe fallback;
+        # it carries no surviving claims to separate, so it must be returned
+        # verbatim. Running the split here would wrap the fallback under a record
+        # section (the original citations still name a guideline ref), leaking the
+        # split machinery onto a blocked answer.
+        if result["verdict"] == "blocked":
+            return rendered
+
         # T50 activation: when the W1-surviving citations include at least one
         # guideline ref, lift the cited claims into structured Citations and run
         # CitationGate so the answer separates patient-record facts from
