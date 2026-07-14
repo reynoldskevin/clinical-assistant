@@ -75,6 +75,11 @@ final class ChartReadEndpoint
                 (string) ($params['query'] ?? ''),
                 (int) ($params['limit'] ?? 20),
             ),
+            ChartOperation::GetDocuments => $this->provider->getDocuments($requestedPid),
+            ChartOperation::GetDocument => $this->provider->getDocument(
+                $requestedPid,
+                (int) ($params['document_id'] ?? 0),
+            ),
         };
     }
 }

@@ -27,6 +27,7 @@ from health import liveness, ready_response
 from factory import (
     build_boundary,
     build_chart_boundary,
+    build_documents_tools,
     build_encounter_tools,
     build_medications_tool,
     build_message_creator,
@@ -415,7 +416,8 @@ def default_agent_builder(
                 build_results_tool(chart_boundary),
                 build_medications_tool(chart_boundary),
                 build_search_tool(chart_boundary),
-            ],
+            ]
+            + build_documents_tools(chart_boundary),
             max_tool_calls=max_tool_calls,
             correlation_id=cid,
         )

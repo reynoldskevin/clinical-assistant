@@ -15,6 +15,7 @@ import uuid
 from typing import Any, Callable
 
 from contracts import (
+    DocumentMetadata,
     EmptyToolInput,
     EncounterRow,
     GetEncounterInput,
@@ -246,6 +247,18 @@ class ChartBoundary:
             raise ValueError("search_chart result must be an array")
         return result
 
+    def get_documents(self, pid: int) -> list[Any]:
+        result = self._post("get_documents", pid, {})
+        if not isinstance(result, list):
+            raise ValueError("get_documents result must be an array")
+        return result
+
+    def get_document(self, pid: int, document_id: int) -> dict[str, Any]:
+        result = self._post("get_document", pid, {"document_id": document_id})
+        if not isinstance(result, dict):
+            raise ValueError("get_document result must be an object")
+        return result
+
 
 def build_chart_boundary(
     base_url: str,
@@ -297,6 +310,32 @@ def build_encounter_tools(chart_boundary: ChartBoundary) -> list[dict[str, Any]]
                 chart_boundary.get_encounter(
                     pid, GetEncounterInput.model_validate(inp).encounter_id
                 ),
+            ),
+        },
+    ]
+
+
+def build_documents_tools(chart_boundary: ChartBoundary) -> list[dict[str, Any]]:
+    """Turn a chart boundary into the document-listing ToolSpec.
+
+    Returns a single ``get_documents`` no-argument list tool: it lists the
+    current patient's uploaded documents (id, name, type, date) as metadata —
+    never the document blob. The patient is fixed for this session, so the tool
+    takes no arguments. The handler validates each metadata row against the
+    ``DocumentMetadata`` contract before returning it.
+    """
+    return [
+        {
+            "name": "get_documents",
+            "description": (
+                "List the current patient's uploaded documents (lab PDFs and "
+                "intake forms) — each with its id, name, doc_type, and date. "
+                "Metadata only; never the document contents. Takes no arguments: "
+                "the patient is fixed for this session."
+            ),
+            "input_schema": EmptyToolInput.model_json_schema(),
+            "handler": lambda pid, inp: validate_rows(
+                DocumentMetadata, chart_boundary.get_documents(pid)
             ),
         },
     ]

@@ -85,6 +85,25 @@ class LabResult(BaseModel):
     date: Optional[str] = None
 
 
+class DocumentMetadata(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: Optional[int] = None
+    name: Optional[str] = None
+    mimetype: Optional[str] = None
+    docdate: Optional[str] = None
+    doc_type: Optional[str] = None
+
+
+class DocumentContent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: Optional[int] = None
+    mimetype: Optional[str] = None
+    doc_type: Optional[str] = None
+    document_data: Optional[str] = None
+
+
 class PatientSummary(BaseModel):
     model_config = ConfigDict(extra="ignore")
 

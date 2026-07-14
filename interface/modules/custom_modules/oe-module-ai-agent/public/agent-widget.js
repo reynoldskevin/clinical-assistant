@@ -36,6 +36,7 @@
     // URL is configurable via a data-attribute so deployments can point it at
     // their own boundary service.
     var tokenUrl = new URL('token.php', document.currentScript ? document.currentScript.src : window.location.href).href;
+    var uploadUrl = new URL('upload.php', document.currentScript ? document.currentScript.src : window.location.href).href;
     var sidecarUrl = root.dataset.sidecarUrl || '/ai-agent-sidecar/ask';
     // The SSE endpoint is derived from the same base as the buffered /ask URL, so
     // a deployment that overrides data-sidecar-url need only set it once.
@@ -68,7 +69,11 @@
             + 'margin-right:0.45em;vertical-align:-0.1em;border:2px solid rgba(0,0,0,0.2);'
             + 'border-top-color:#337ab7;border-radius:50%;'
             + 'animation:oe-ai-agent-spin 0.7s linear infinite}'
-            + '.oe-ai-agent-answer:not(:empty){margin-bottom:0.75em}';
+            + '.oe-ai-agent-answer:not(:empty){margin-bottom:0.75em}'
+            // Once the upload status has content, it takes the label's place:
+            // hide the adjacent "Upload a document" label so the message sits
+            // directly against the doc-type dropdown.
+            + '.oe-ai-agent-upload-status:not(:empty)+.oe-ai-agent-upload-label{display:none}';
         (document.head || document.documentElement).appendChild(style);
     })();
 
@@ -388,6 +393,76 @@
             question.focus();
         });
     });
+
+    // Document upload: POST the selected file + chosen doc_type as multipart to
+    // upload.php, including the page CSRF token. The pid is fixed server-side
+    // from the session, so it is never sent from here. Success/failure is
+    // reflected inline; no internal error detail is ever surfaced.
+    (function wireUpload() {
+        var uploadForm = root.querySelector('.oe-ai-agent-upload-form');
+        if (!uploadForm) {
+            return;
+        }
+        var fileInput = uploadForm.querySelector('.oe-ai-agent-file');
+        var docTypeSelect = uploadForm.querySelector('.oe-ai-agent-doc-type');
+        var uploadSubmit = uploadForm.querySelector('.oe-ai-agent-upload-submit');
+        var status = uploadForm.querySelector('.oe-ai-agent-upload-status');
+        if (!fileInput || !docTypeSelect || !status) {
+            return;
+        }
+
+        function setStatus(text, ok) {
+            status.textContent = text;
+            status.style.color = ok ? '#3c763d' : '#a94442';
+        }
+
+        uploadForm.addEventListener('submit', function (evt) {
+            evt.preventDefault();
+            var file = fileInput.files && fileInput.files[0];
+            if (!file) {
+                setStatus('Choose a file to upload.', false);
+                return;
+            }
+            var payload = new FormData();
+            payload.append('csrf_token', csrfToken);
+            payload.append('doc_type', docTypeSelect.value);
+            payload.append('document', file);
+
+            if (uploadSubmit) {
+                uploadSubmit.disabled = true;
+            }
+            setStatus('Uploading...', true);
+
+            fetch(uploadUrl, {
+                method: 'POST',
+                credentials: 'same-origin',
+                body: payload
+            }).then(function (res) {
+                if (!res.ok) {
+                    throw new Error('upload failed');
+                }
+                return res.json();
+            }).then(function (data) {
+                if (!data || !data.ok) {
+                    throw new Error('upload rejected');
+                }
+                // Confirm where the document was filed. setStatus writes via
+                // textContent, so the server-supplied category name is inserted
+                // as plain text — never interpreted as HTML.
+                setStatus(
+                    data.category ? ('Uploaded to ' + data.category + '.') : 'Uploaded.',
+                    true
+                );
+                uploadForm.reset();
+            }).catch(function () {
+                setStatus('Upload failed. Please try again.', false);
+            }).finally(function () {
+                if (uploadSubmit) {
+                    uploadSubmit.disabled = false;
+                }
+            });
+        });
+    })();
 
     // Enter submits the question (same as clicking Ask); Shift+Enter inserts a
     // newline so multi-line questions are still possible.

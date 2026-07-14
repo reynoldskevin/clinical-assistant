@@ -31,9 +31,13 @@ final class ChartOperationTest extends TestCase
     {
         $values = array_map(static fn (ChartOperation $c): string => $c->value, ChartOperation::cases());
 
-        // Exactly these, no more: the boundary's whitelist (T20 adds search_chart).
+        // Exactly these, no more: the boundary's whitelist (T20 adds search_chart;
+        // T46 adds the document reads get_documents / get_document).
         $this->assertSame(
-            ['summary', 'list_encounters', 'get_encounter', 'get_results', 'get_medications', 'search_chart'],
+            [
+                'summary', 'list_encounters', 'get_encounter', 'get_results',
+                'get_medications', 'search_chart', 'get_documents', 'get_document',
+            ],
             $values,
         );
     }
@@ -46,6 +50,8 @@ final class ChartOperationTest extends TestCase
         $this->assertSame(ChartOperation::GetResults, ChartOperation::from('get_results'));
         $this->assertSame(ChartOperation::SearchChart, ChartOperation::from('search_chart'));
         $this->assertSame(ChartOperation::GetMedications, ChartOperation::from('get_medications'));
+        $this->assertSame(ChartOperation::GetDocuments, ChartOperation::from('get_documents'));
+        $this->assertSame(ChartOperation::GetDocument, ChartOperation::from('get_document'));
     }
 
     public function testUnknownStringIsRejected(): void

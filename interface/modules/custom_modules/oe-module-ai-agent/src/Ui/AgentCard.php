@@ -52,6 +52,18 @@ final class AgentCard
                 placeholder="Ask about this patient..." aria-label="Question for the AI Clinical Co-Pilot"></textarea>
             <button type="submit" class="oe-ai-agent-submit btn btn-primary btn-sm mt-1">Ask</button>
         </form>
+        <form class="oe-ai-agent-upload-form d-flex flex-wrap align-items-center justify-content-end mt-2">
+            <span class="oe-ai-agent-upload-status small mb-0 mr-2" role="status" aria-live="polite"></span>
+            <label class="oe-ai-agent-upload-label small text-muted mb-0 mr-2">Upload a document</label>
+            <select class="oe-ai-agent-doc-type custom-select custom-select-sm w-auto mr-1"
+                aria-label="Document type">
+                <option value="lab_pdf">Lab PDF</option>
+                <option value="intake_form">Intake form</option>
+            </select>
+            <input type="file" class="oe-ai-agent-file form-control-file form-control-sm w-auto mr-1"
+                accept="application/pdf,image/*" aria-label="Upload a document">
+            <button type="submit" class="oe-ai-agent-upload-submit btn btn-secondary btn-sm">Upload</button>
+        </form>
     </div>
     <script src="../../../interface/modules/custom_modules/oe-module-ai-agent/public/agent-widget.js?v={$version}"></script>
 </div>
