@@ -95,7 +95,13 @@ _SYSTEM_PROMPT = (
     "clinical detail is needed. Never speculate beyond the retrieved data.\n\n"
     "Ground every answer in the retrieved records. For each record you rely on, "
     "cite it inline with an [Sn] marker (S1, S2, ...) placed next to the claim "
-    "it supports. End your answer with a fenced ```citations block containing a "
+    "it supports. Give each distinct record its own marker, and place that marker "
+    "in the SAME sentence or list item as the specific record it names — e.g. "
+    '"Warfarin Sodium 5 MG is active [S1]". Do NOT put a marker on a lead-in or '
+    "heading that names no specific record (write a bare \"Active medications:\" "
+    "with no marker, then cite each drug on its own line), and do NOT reuse one "
+    "marker for several different records. "
+    "End your answer with a fenced ```citations block containing a "
     "JSON array that maps each n to the exact tool-provided ref, e.g.\n"
     "```citations\n"
     '[{"n": 1, "ref": "prescription:1"}]\n'

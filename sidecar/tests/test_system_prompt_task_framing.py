@@ -34,3 +34,14 @@ def test_prompt_still_carries_grounding_and_data_quality_contract():
     assert "openemr:_absence" in _SYSTEM_PROMPT
     assert "empty != absent" in _PROMPT
     assert "citations" in _PROMPT
+
+
+def test_prompt_instructs_same_line_distinct_marker_citation():
+    # V3 (contradicts_record) blocks when an [Sn] marker lands in a sentence that
+    # names no specific record (e.g. a bare "Active medications: [S1]" lead-in).
+    # The prompt must steer each marker onto the SAME line as the record it names,
+    # give each record a distinct marker, and keep markers off name-less headings,
+    # so a model (esp. a smaller/faster one) does not intermittently trip the gate.
+    assert "same sentence or list item" in _PROMPT
+    assert "do not reuse one marker" in _PROMPT
+    assert "names no specific record" in _PROMPT
