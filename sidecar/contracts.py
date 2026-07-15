@@ -51,6 +51,19 @@ class EvidenceQueryInput(BaseModel):
     top_k: int = 3
 
 
+class GetIntakeFactInput(BaseModel):
+    """Intake-form extraction tool input.
+
+    ``document_id`` is optional: when omitted the tool extracts from the
+    patient's most-recent uploaded intake form. Supply it (from get_documents)
+    to target a specific intake form when several exist.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: Optional[int] = None
+
+
 # --- OUTPUT models (extras ignored; known fields typed, Optional) ------------
 
 class MedicationRow(BaseModel):

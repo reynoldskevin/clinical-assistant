@@ -19,6 +19,7 @@ from contracts import (
     EmptyToolInput,
     EncounterRow,
     GetEncounterInput,
+    GetIntakeFactInput,
     GetMedicationsInput,
     LabResult,
     MedicationRow,
@@ -27,6 +28,17 @@ from contracts import (
     SearchChartInput,
     validate_obj,
     validate_rows,
+)
+
+# The intake-form fields exposed as individually-citable rows, in the order the
+# co-pilot most often needs them (chief_concern first). Kept in sync with the
+# groundable fields on ``contracts.IntakeFact``.
+_INTAKE_FIELDS = (
+    "chief_concern",
+    "demographics",
+    "current_medications",
+    "allergies",
+    "family_history",
 )
 
 
@@ -339,6 +351,99 @@ def build_documents_tools(chart_boundary: ChartBoundary) -> list[dict[str, Any]]
             ),
         },
     ]
+
+
+def build_intake_tool(
+    chart_boundary: ChartBoundary,
+    message_creator: Callable[..., Any],
+    model: str = "claude-opus-4-8",
+) -> dict[str, Any]:
+    """Turn a chart boundary + VLM into the intake-form extraction ToolSpec.
+
+    ``get_documents`` returns intake-form *metadata* only; the extracted intake
+    facts (chief concern, demographics, medications, allergies, family history)
+    live in the document blob, which no other ``/ask`` tool can read. This tool
+    bridges that gap: it fetches the patient's intake form pid-scoped through the
+    same read boundary the upload-time extractor uses, runs the VLM extractor
+    (``attach_and_extract``), and returns each grounded field as its own row —
+    ``ref``/``title``/``section``/``value`` — so the model can cite an intake
+    fact (e.g. ``intake:<id>:chief_concern``) the same way it cites any record
+    fact. An ungroundable field is dropped, never invented; when the patient has
+    no intake form on file the tool returns an empty list.
+
+    Requires the same injected VLM ``message_creator`` the extract endpoint uses,
+    so this is built where that dependency is available (``default_agent_builder``),
+    unlike the boundary-only tool builders above.
+    """
+    # Lazy import keeps factory importable without the extractor's transitive deps
+    # and mirrors how graph.py defers the same module.
+    from extractor import attach_and_extract
+
+    def handler(pid: int, inp: dict[str, Any]) -> list[dict[str, Any]]:
+        parsed = GetIntakeFactInput.model_validate(inp)
+        # Resolve the target intake form pid-scoped: only the patient's own
+        # documents are ever visible here, so a model-supplied document_id can
+        # never redirect the read to another chart. get_documents is newest-first.
+        documents = chart_boundary.get_documents(pid)
+        intake_docs = [
+            d for d in documents
+            if isinstance(d, dict) and str(d.get("doc_type")) == "intake_form"
+        ]
+        if parsed.document_id is not None:
+            intake_docs = [
+                d for d in intake_docs if int(d.get("id") or 0) == parsed.document_id
+            ]
+        if not intake_docs:
+            # No intake form on file (or the requested id is not one): an empty
+            # result the model reads as "not documented", never a fabricated fact.
+            return []
+
+        document_id = int(intake_docs[0]["id"])
+        result = attach_and_extract(
+            pid,
+            document_id,
+            "intake_form",
+            chart_boundary=chart_boundary,
+            message_creator=message_creator,
+            model=model,
+        )
+        fact = result.fact
+
+        # One grounded row per non-null field so each intake fact is individually
+        # citable. section/title/value map onto the record-citation the gate
+        # synthesizes (page_or_section / field_or_chunk_id / quote_or_value).
+        rows: list[dict[str, Any]] = []
+        for field in _INTAKE_FIELDS:
+            value = getattr(fact, field, None)
+            if value is None:
+                continue
+            rows.append(
+                {
+                    "ref": f"intake:{document_id}:{field}",
+                    "title": field,
+                    "section": fact.source_citation,
+                    "value": value,
+                }
+            )
+        return rows
+
+    return {
+        "name": "get_intake_form",
+        "description": (
+            "Extract the structured facts from the current patient's uploaded "
+            "intake form — chief_concern, demographics, current_medications, "
+            "allergies, and family_history — each as a citable row with a ref, "
+            "the field name, the source citation, and the extracted value. Use "
+            "this to answer questions about what the patient reported on their "
+            "intake form (get_documents only lists that the form exists, not its "
+            "contents). Optionally pass a document_id (from get_documents) to "
+            "target a specific intake form; omit it to use the most recent one. "
+            "Returns an empty list when the patient has no intake form on file. "
+            "The patient is fixed for this session."
+        ),
+        "input_schema": GetIntakeFactInput.model_json_schema(),
+        "handler": handler,
+    }
 
 
 def build_results_tool(chart_boundary: ChartBoundary) -> dict[str, Any]:

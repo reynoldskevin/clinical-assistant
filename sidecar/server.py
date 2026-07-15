@@ -29,6 +29,7 @@ from factory import (
     build_chart_boundary,
     build_documents_tools,
     build_encounter_tools,
+    build_intake_tool,
     build_medications_tool,
     build_message_creator,
     build_results_tool,
@@ -416,9 +417,11 @@ def default_agent_builder(
 
     The agent gets the built-in summary tool plus the operation-dispatched chart
     tools (list_encounters / get_encounter) that POST to read.php with the same
-    forwarded JWT, plus the ``evidence_retriever`` guideline-evidence tool that
-    runs hybrid retrieval over the shared, build-once guideline index. ``read_url``
-    defaults to the summary URL with ``summary.php`` swapped for ``read.php``.
+    forwarded JWT, the ``get_intake_form`` tool that reads the patient's intake
+    form through the same boundary and returns its extracted, citable facts, plus
+    the ``evidence_retriever`` guideline-evidence tool that runs hybrid retrieval
+    over the shared, build-once guideline index. ``read_url`` defaults to the
+    summary URL with ``summary.php`` swapped for ``read.php``.
     """
     chart_url = read_url or summary_url.replace("summary.php", "read.php")
     # Per-turn tool-execution budget; overridable via env (defaults to 8).
@@ -443,9 +446,10 @@ def default_agent_builder(
             ]
             + build_documents_tools(chart_boundary)
             + [
+                build_intake_tool(chart_boundary, message_creator, model),
                 build_evidence_retriever_tool(
                     get_guideline_index(), tracer=observer
-                )
+                ),
             ],
             max_tool_calls=max_tool_calls,
             correlation_id=cid,
