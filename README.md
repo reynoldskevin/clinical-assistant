@@ -25,7 +25,8 @@ Deployed demo viewable [here](https://truthful-peace-production-62af.up.railway.
 [Seeding demo data](#seeding-demo-data)\
 [Architecture Diagram](#architecture-diagram)\
 [Engineering Deliverables](#engineering-deliverables)\
-[Submission Requirements](#submission-requirements) 
+[Submission Requirements](#submission-requirements)\
+[Week 2 Submission Requirements](#week-2-submission-requirements) 
 
 ## Installation
 
@@ -209,3 +210,6 @@ Stress Test results [here](STRESS_TESTS.md)
 ## Submission Requirements
 Eval dataset [here](EVAL_DATASET.md)\
 AI Cost Analysis [here](COST_ANALYSIS.md)
+
+## Week 2 Submission Requirements
+Latency and Cost report [here](COST_ANALYSIS_W2_MVP.md)
