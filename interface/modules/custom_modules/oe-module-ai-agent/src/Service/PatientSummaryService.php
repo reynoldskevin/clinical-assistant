@@ -53,7 +53,8 @@ final class PatientSummaryService implements ChartReadProviderInterface
     public function listEncounters(int $pid): array
     {
         return $this->fetchList(
-            'SELECT encounter, date, reason, provider_id FROM form_encounter '
+            "SELECT CONCAT('encounter:', encounter) AS ref, "
+            . 'encounter, date, reason, provider_id FROM form_encounter '
             . 'WHERE pid = ? ORDER BY date DESC',
             $pid
         );
@@ -69,7 +70,8 @@ final class PatientSummaryService implements ChartReadProviderInterface
     public function getEncounter(int $pid, int $encounterId): array
     {
         $stmt = $this->db->prepare(
-            'SELECT encounter, date, reason, provider_id, facility, encounter_type_description '
+            "SELECT CONCAT('encounter:', encounter) AS ref, "
+            . 'encounter, date, reason, provider_id, facility, encounter_type_description '
             . 'FROM form_encounter WHERE pid = ? AND encounter = ?'
         );
         $stmt->bindValue(1, $pid, \PDO::PARAM_INT);
@@ -91,7 +93,8 @@ final class PatientSummaryService implements ChartReadProviderInterface
     public function getResults(int $pid): array
     {
         return $this->fetchList(
-            'SELECT pr.result_code, pr.result_text, pr.result, pr.units, pr.`range`, '
+            "SELECT CONCAT('result:', pr.procedure_result_id) AS ref, "
+            . 'pr.result_code, pr.result_text, pr.result, pr.units, pr.`range`, '
             . 'pr.abnormal, pr.date, pr.result_status FROM procedure_result pr '
             . 'JOIN procedure_report prpt ON prpt.procedure_report_id = pr.procedure_report_id '
             . 'JOIN procedure_order po ON po.procedure_order_id = prpt.procedure_order_id '
