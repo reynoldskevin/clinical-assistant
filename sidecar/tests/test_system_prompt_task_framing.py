@@ -45,3 +45,12 @@ def test_prompt_instructs_same_line_distinct_marker_citation():
     assert "same sentence or list item" in _PROMPT
     assert "do not reuse one marker" in _PROMPT
     assert "names no specific record" in _PROMPT
+
+
+def test_prompt_requires_citing_dated_numeric_sentences():
+    # V2 demotes any sentence with a digit that lacks a valid [Sn] marker, so a
+    # bare "last visit was April 8, 2026" (uncited) gets "(not supported...)".
+    # The prompt must require a citation on every dated/numeric statement, and
+    # openemr:_absence when the numeric sentence asserts something is undocumented.
+    assert "specific date, count, or measured value" in _PROMPT
+    assert "openemr:_absence" in _PROMPT

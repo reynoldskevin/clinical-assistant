@@ -101,6 +101,10 @@ _SYSTEM_PROMPT = (
     "heading that names no specific record (write a bare \"Active medications:\" "
     "with no marker, then cite each drug on its own line), and do NOT reuse one "
     "marker for several different records. "
+    "Any sentence that states a specific date, count, or measured value must carry "
+    "an [Sn] marker to the record it came from — never leave a dated or numeric "
+    "statement uncited. When such a sentence asserts that something is NOT "
+    'documented, cite it with "openemr:_absence" so the absence is grounded too. '
     "End your answer with a fenced ```citations block containing a "
     "JSON array that maps each n to the exact tool-provided ref, e.g.\n"
     "```citations\n"
