@@ -51,6 +51,16 @@ ExtractFn = Callable[[int, str, int, str], dict[str, Any]]
 # The closed set of document types the extractor understands (mirrors upload.php).
 _DOC_TYPES = ("lab_pdf", "intake_form")
 
+# Default Claude model for both the agent loop and the document extractor. The
+# deployment can override it (e.g. a faster tier) via OE_AI_AGENT_MODEL without a
+# code change; unset preserves the historical Opus default.
+_DEFAULT_MODEL = "claude-opus-4-8"
+
+
+def _configured_model() -> str:
+    """Return the Claude model to use, honoring the OE_AI_AGENT_MODEL override."""
+    return os.environ.get("OE_AI_AGENT_MODEL") or _DEFAULT_MODEL
+
 _BEARER_PREFIX = "Bearer "
 
 
@@ -413,6 +423,7 @@ def default_agent_builder(
     chart_url = read_url or summary_url.replace("summary.php", "read.php")
     # Per-turn tool-execution budget; overridable via env (defaults to 8).
     max_tool_calls = int(os.environ.get("OE_AI_AGENT_MAX_TOOL_CALLS") or "8")
+    model = _configured_model()
 
     def build(pid: int, jwt: str) -> ClaudeAgent:
         cid = new_correlation_id()
@@ -422,6 +433,7 @@ def default_agent_builder(
         return ClaudeAgent(
             message_creator,
             boundary,
+            model=model,
             observer=observer,
             extra_tools=build_encounter_tools(chart_boundary)
             + [
@@ -530,6 +542,7 @@ def default_extract_builder(
     validated ``LabFact``/``IntakeFact`` as a JSON-safe envelope.
     """
     chart_url = read_url or summary_url.replace("summary.php", "read.php")
+    model = _configured_model()
 
     def extract(pid: int, jwt: str, document_id: int, doc_type: str) -> dict[str, Any]:
         cid = new_correlation_id()
@@ -540,6 +553,7 @@ def default_extract_builder(
             doc_type,
             chart_boundary=chart_boundary,
             message_creator=message_creator,
+            model=model,
         )
         # Only the validated fact + PHI-free telemetry cross back to the browser;
         # never the raw document bytes or the VLM's unparsed text.
