@@ -62,6 +62,21 @@ def _configured_model() -> str:
     """Return the Claude model to use, honoring the OE_AI_AGENT_MODEL override."""
     return os.environ.get("OE_AI_AGENT_MODEL") or _DEFAULT_MODEL
 
+
+def _extract_model() -> str:
+    """Return the Claude model for the VLM document extractor.
+
+    Deliberately decoupled from ``_configured_model``: the strict extraction
+    contracts (``IntakeFact``/``LabFact`` — ``extra="forbid"``, every field a
+    required key, flat-string values, non-empty ``source_citation``) demand a
+    model capable of producing a schema-exact envelope, whereas the chat loop
+    can run a faster/cheaper tier. So a deployment may set OE_AI_AGENT_MODEL to a
+    fast tier (e.g. Haiku) for latency while extraction stays on the capable
+    default — unless OE_AI_AGENT_EXTRACT_MODEL explicitly overrides it. Unset,
+    extraction uses the historical Opus default regardless of the chat model.
+    """
+    return os.environ.get("OE_AI_AGENT_EXTRACT_MODEL") or _DEFAULT_MODEL
+
 _BEARER_PREFIX = "Bearer "
 
 
@@ -427,6 +442,10 @@ def default_agent_builder(
     # Per-turn tool-execution budget; overridable via env (defaults to 8).
     max_tool_calls = int(os.environ.get("OE_AI_AGENT_MAX_TOOL_CALLS") or "8")
     model = _configured_model()
+    # The intake tool runs the VLM extractor mid-turn, so it uses the capable
+    # extraction model (see _extract_model) rather than the chat-loop model —
+    # a fast chat tier must not weaken the strict-contract extraction.
+    extract_model = _extract_model()
 
     def build(pid: int, jwt: str) -> ClaudeAgent:
         cid = new_correlation_id()
@@ -446,7 +465,7 @@ def default_agent_builder(
             ]
             + build_documents_tools(chart_boundary)
             + [
-                build_intake_tool(chart_boundary, message_creator, model),
+                build_intake_tool(chart_boundary, message_creator, extract_model),
                 build_evidence_retriever_tool(
                     get_guideline_index(), tracer=observer
                 ),
@@ -546,7 +565,7 @@ def default_extract_builder(
     validated ``LabFact``/``IntakeFact`` as a JSON-safe envelope.
     """
     chart_url = read_url or summary_url.replace("summary.php", "read.php")
-    model = _configured_model()
+    model = _extract_model()
 
     def extract(pid: int, jwt: str, document_id: int, doc_type: str) -> dict[str, Any]:
         cid = new_correlation_id()
