@@ -148,6 +148,10 @@ def attach_and_extract(
         'not ground>], "fact": {<the requested fields>}}. '
         "NEVER invent an ungrounded value: if you cannot ground a field in the "
         "document, set it to null and list its name in unsupported_fields. "
+        "Every value inside \"fact\" MUST be a plain JSON string or null — never a "
+        "nested object or array. If a field has several parts (e.g. demographics, "
+        "or a list of medications), combine them into ONE human-readable string, "
+        "separating items with '; '. "
         "Always include a source_citation that points to where in the document "
         "the facts came from. Return the JSON and nothing else."
     )
