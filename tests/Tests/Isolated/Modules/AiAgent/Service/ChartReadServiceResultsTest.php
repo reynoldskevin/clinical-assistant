@@ -123,6 +123,10 @@ final class ChartReadServiceResultsTest extends TestCase
         $this->assertSame('%', $hba1c['units']);
         $this->assertSame('4.0-5.6', $hba1c['range']);
         $this->assertSame('yes', $hba1c['abnormal']);
+        // Each result carries a citable ref (result:<procedure_result_id>) so the
+        // agent can ground a lab-value claim through the verification gate.
+        $this->assertArrayHasKey('ref', $hba1c);
+        $this->assertMatchesRegularExpression('/^result:\d+$/', $hba1c['ref']);
         $this->assertArrayHasKey('date', $hba1c);
         $this->assertArrayHasKey('result_status', $hba1c);
     }

@@ -93,6 +93,9 @@ final class ChartReadServiceEncountersTest extends TestCase
         $this->assertArrayHasKey('date', $first);
         $this->assertArrayHasKey('reason', $first);
         $this->assertSame('Medication review', $first['reason']);
+        // Each encounter carries a citable ref (encounter:<id>) so the agent can
+        // ground visit/date claims through the verification gate.
+        $this->assertSame('encounter:12', $first['ref']);
     }
 
     public function testGetEncounterReturnsOwnEncounterDetail(): void
@@ -102,6 +105,8 @@ final class ChartReadServiceEncountersTest extends TestCase
         $this->assertNotSame([], $encounter);
         $this->assertSame(11, (int) $encounter['encounter']);
         $this->assertSame('Follow-up visit', $encounter['reason']);
+        // The single-encounter read is citable too.
+        $this->assertSame('encounter:11', $encounter['ref']);
     }
 
     public function testGetEncounterForAnotherPatientsIdReturnsEmpty(): void
