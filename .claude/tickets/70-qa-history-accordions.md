@@ -1,7 +1,7 @@
 ---
 id: 70
 title: Q&A history — collapsible accordions instead of clearing prior answers
-status: tests-authored
+status: ready-for-merge
 depends_on: [69]
 branch: ticket/70-qa-history-accordions
 base_branch: main
@@ -50,25 +50,25 @@ The live streaming/render path is otherwise unchanged; only the previous turn's
 disposal changes from "discard" to "archive into history".
 
 ## Acceptance criteria
-- [ ] A `.oe-ai-agent-history` container is created and positioned as a sibling
+- [x] A `.oe-ai-agent-history` container is created and positioned as a sibling
   BEFORE `.oe-ai-agent-answer` (archived turns render above the live area).
-- [ ] Asking a second question archives the FIRST turn: a `.oe-ai-agent-turn` is
+- [x] Asking a second question archives the FIRST turn: a `.oe-ai-agent-turn` is
   appended to the history whose `.oe-ai-agent-turn-q` heading shows the first
   question and whose `.oe-ai-agent-turn-a` body holds the first answer; the live
   answer area no longer shows that answer.
-- [ ] The archived turn is COLLAPSED by default: the heading is a button with
+- [x] The archived turn is COLLAPSED by default: the heading is a button with
   `aria-expanded="false"` and the body has the `hidden` attribute. Clicking the
   heading expands it (`aria-expanded="true"`, body no longer `hidden`); clicking
   again collapses it.
-- [ ] The question text remains visible in the heading at all times (collapsed or
+- [x] The question text remains visible in the heading at all times (collapsed or
   expanded).
-- [ ] Chronological order: with multiple archived turns, the oldest is the first
+- [x] Chronological order: with multiple archived turns, the oldest is the first
   child and the newest is the last child of the history (nearest the live area).
-- [ ] Uploading a document archives the current turn too (same accordion, keyed by
+- [x] Uploading a document archives the current turn too (same accordion, keyed by
   its question) and leaves the live answer empty — nothing is silently discarded.
-- [ ] The first question (no prior turn) creates NO history item; when there is no
+- [x] The first question (no prior turn) creates NO history item; when there is no
   tracked question, the live area is still simply cleared (T69 semantics intact).
-- [ ] No regression: the T69 `agent-widget-clear.test.js` suite stays green; lint
+- [x] No regression: the T69 `agent-widget-clear.test.js` suite stays green; lint
   clean under `eslint --quiet`.
 
 ## Test plan (orchestrator authors these)
