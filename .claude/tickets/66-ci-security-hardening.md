@@ -1,7 +1,7 @@
 ---
 id: 66
 title: CI hardening — dependency audit + security scan on every PR
-status: ready-for-merge
+status: done
 depends_on: [52]
 branch: ticket/66-ci-security-hardening
 base_branch: main
