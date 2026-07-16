@@ -40,6 +40,7 @@ from factory import (
 from observability import TraceCollector
 from retrieval import build_evidence_retriever_tool, get_guideline_index
 from extractor import attach_and_extract
+from identity_check import check_identity
 
 from pydantic import ValidationError
 
@@ -601,7 +602,7 @@ def default_extract_builder(
         )
         # Only the validated fact + PHI-free telemetry cross back to the browser;
         # never the raw document bytes or the VLM's unparsed text.
-        return {
+        body: dict[str, Any] = {
             "ok": True,
             "doc_type": result.doc_type,
             "confidence": result.confidence,
@@ -610,6 +611,28 @@ def default_extract_builder(
             "fact": result.fact.model_dump(),
             "correlation_id": cid,
         }
+
+        # Proactive, deterministic wrong-chart / wrong-patient check at
+        # extraction time (intake forms only). Best-effort and fail-open: any
+        # error fetching the chart demographics or running the check simply
+        # omits `identity_check` — a verification outage must never block the
+        # extracted fact, and we never cry wolf on an unverifiable upload.
+        if doc_type == "intake_form":
+            try:
+                summary = build_boundary(summary_url, jwt, correlation_id=cid)(pid)
+                demographics = summary.get("demographics")
+                check = check_identity(result.fact.demographics, demographics)
+                body["identity_check"] = {
+                    "matches": check.matches,
+                    "mismatched_identifiers": check.mismatched_identifiers,
+                    "warning": None if check.matches else "possible_wrong_chart",
+                }
+            except Exception:  # noqa: BLE001 - fail-open on any verification error
+                logging.getLogger("sidecar").warning(
+                    "identity check skipped pid=%s doc=%s", pid, document_id
+                )
+
+        return body
 
     return extract
 
