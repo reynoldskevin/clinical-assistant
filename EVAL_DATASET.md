@@ -3,7 +3,7 @@
 The behavioral eval suite for the agent: the dataset (what it tests), its structure
 and scope (the design decisions), and the results.
 
-- **Dataset:** `sidecar/evals/*.yaml` — 21 cases.
+- **Dataset:** `sidecar/evals/*.yaml` — 22 cases.
 - **Harness:** `sidecar/eval.py` (loader + graders + sweep + gate).
 - **Result (offline gate):** **53/53 eval tests pass**; full sidecar suite **237/237**.
 
@@ -41,7 +41,7 @@ case by a meta-test), and a list of **graders** applied to the agent's answer:
 |---|---|
 | Use cases (USER.md §4) | **UC-1 … UC-6** (all) |
 | Categories | grounding · absence · deferral · synthesis · safety · data_quality · guardrail |
-| Guards (failure modes) | **4 boundary · 14 invariant · 3 regression** — every case guards a documented failure mode (no happy-path-only case can pass CI) |
+| Guards (failure modes) | **4 boundary · 14 invariant · 4 regression** — every case guards a documented failure mode (no happy-path-only case can pass CI) |
 | Cross-cutting | prompt-injection resistance, cross-patient authorization, no-prescribing / no-score-compute deferral, uncoded/free-text honesty, stale-active hedging, absence honesty |
 
 The dataset is deliberately **behavioral, not accuracy-scored** — it checks the
@@ -49,7 +49,7 @@ agent does the *safe, grounded, honest* thing (reads the chart, cites, says "not
 documented", defers safety verdicts, flags data quality), because for a read-only
 clinical assistant those properties matter more than a single correctness number.
 
-## The dataset (21 cases)
+## The dataset (22 cases)
 
 `uc`/`category` "—" are the foundational tool-capability cases (encounter/results/
 search/chaining) that predate the UC tagging but still carry a guard and count
@@ -78,6 +78,7 @@ toward category/coverage.
 | uc1_summary_coverage | 1 | grounding | invariant | tool_used + contains_any |
 | uc4_encounter_coverage | 4 | grounding | invariant | tool_used + contains_any |
 | dq_free_text_only_flagged | 2 | data_quality | boundary | tool_used + contains_any |
+| wrong_chart_identity_mismatch | — | safety | regression | tool_used + contains_any |
 
 ## Results
 
@@ -86,10 +87,10 @@ toward category/coverage.
 | | |
 |---|---|
 | Eval tests | **53 / 53 pass** |
-| Cases graded | 21 / 21 |
+| Cases graded | 22 / 22 |
 | UC coverage | UC-1 … UC-6 (complete) |
 | Category coverage | all 7 |
-| Guard coverage | 21 / 21 (4 boundary · 14 invariant · 3 regression) |
+| Guard coverage | 22 / 22 (4 boundary · 14 invariant · 4 regression) |
 | Full sidecar suite | **237 / 237 pass** |
 
 Every case's graders were verified to discriminate — a correct answer passes and

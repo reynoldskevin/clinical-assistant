@@ -33,5 +33,5 @@ def test_documents_structure_scope_and_results():
 def test_case_count_matches_the_real_dataset():
     import yaml
     n = sum(len(yaml.safe_load(open(f).read()) or []) for f in glob.glob(os.path.join(EVALS_DIR, "*.yaml")))
-    assert n == 21                             # keep the doc's "21 cases" honest
-    assert "21" in _text()
+    assert n == 22                             # keep the doc's "22 cases" honest
+    assert "22" in _text()
