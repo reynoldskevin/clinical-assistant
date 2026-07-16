@@ -26,6 +26,7 @@ pydantic only, no network, no I/O). Verdict shape mirrors the W1 gate:
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -42,6 +43,34 @@ GUIDELINE_SECTION_HEADER = "## Guideline evidence"
 # Stable marker appended to any uncited claim so it can never masquerade as a
 # grounded fact wherever it surfaces.
 DEMOTION_NOTE = " (uncited — not grounded in the record)"
+
+# Stable marker appended to a *cited* claim whose ``quote_or_value`` could not be
+# grounded in the supplied source text. A quote mismatch is a soft grounding
+# weakness (the claim is demoted, never blocked), distinct from a hard block.
+QUOTE_MISMATCH_NOTE = " (citation quote not found in the record)"
+
+# Collapses any run of internal whitespace to a single space for normalized,
+# whitespace-insensitive quote matching.
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def _normalize_for_match(value: str) -> str:
+    """Casefold ``value`` and collapse internal whitespace runs to single spaces."""
+    return _WHITESPACE_RE.sub(" ", value).strip().casefold()
+
+
+def _is_grounded(quote: str, source_text: str) -> bool:
+    """Whether ``quote`` is grounded in ``source_text`` (normalized, either direction).
+
+    A normalized substring match in EITHER direction grounds the quote, so a
+    quote shorter than the source field ("Warfarin" in "Warfarin 5 mg") and a
+    quote longer than it ("Warfarin 5 mg" containing "Warfarin") both pass.
+    """
+    normalized_quote = _normalize_for_match(quote)
+    normalized_source = _normalize_for_match(source_text)
+    if not normalized_quote or not normalized_source:
+        return False
+    return normalized_quote in normalized_source or normalized_source in normalized_quote
 
 
 class Citation(BaseModel):
@@ -64,13 +93,27 @@ class Citation(BaseModel):
 class CitationGate:
     """Validates citations, routes cited claims, demotes uncited ones."""
 
-    def gate(self, claims: list[dict[str, Any]]) -> dict[str, Any]:
+    def gate(
+        self,
+        claims: list[dict[str, Any]],
+        sources: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         """Gate ``claims`` into routed buckets and a rendered answer.
 
         Each claim is ``{"text": str, "citation": <dict | Citation | None>}``.
         A dict citation is validated through :class:`Citation` (a contract
         violation raises ``pydantic.ValidationError``, which propagates); a
         :class:`Citation` instance is accepted as-is; ``None`` means uncited.
+
+        ``sources`` optionally maps ``source_id -> the record's searchable text``.
+        When supplied and a cited claim's ``source_id`` is a key in it, the
+        claim's ``quote_or_value`` is verified to be grounded in that source text
+        (normalized substring match in either direction). An ungrounded quote is
+        a SOFT demote: it raises a ``quote_mismatch`` flag and is moved out of the
+        clean bucket into the demoted section (marked with
+        :data:`QUOTE_MISMATCH_NOTE`) — it is never blocked. A ``source_id`` absent
+        from ``sources`` is not quote-checked (no false demote). When ``sources``
+        is ``None`` the gate behaves exactly as before.
 
         Returns ``{"verdict", "flags", "record_facts", "guideline_evidence",
         "rendered_answer"}``. ``verdict`` is ``"pass"`` when ``flags`` is empty,
@@ -95,6 +138,20 @@ class CitationGate:
                 )
                 demoted.append(text + DEMOTION_NOTE)
                 continue
+
+            if sources is not None and citation.source_id in sources:
+                if not _is_grounded(
+                    citation.quote_or_value, sources[citation.source_id]
+                ):
+                    flags.append(
+                        {
+                            "code": "quote_mismatch",
+                            "source_id": citation.source_id,
+                            "action": "demoted",
+                        }
+                    )
+                    demoted.append(text + QUOTE_MISMATCH_NOTE)
+                    continue
 
             if citation.source_type == SOURCE_GUIDELINE:
                 guideline_evidence.append(text)

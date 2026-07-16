@@ -352,7 +352,25 @@ class ClaudeAgent:
                 }
             )
 
-        return CitationGate().gate(claims)["rendered_answer"]
+        sources = self._sources_from_retrieved_data(retrieved_data)
+        return CitationGate().gate(claims, sources=sources)["rendered_answer"]
+
+    @staticmethod
+    def _sources_from_retrieved_data(
+        retrieved_data: dict[str, dict[str, Any]],
+    ) -> dict[str, str]:
+        """Map each ref to a searchable string of its record row's string values.
+
+        The gate uses this to verify a citation's quote is grounded in the row it
+        cites. Because :meth:`_citation_for` synthesizes each ``quote_or_value``
+        FROM the same row values, live quotes are grounded by construction; the
+        guard is live for any future path supplying a model-authored quote.
+        """
+        sources: dict[str, str] = {}
+        for ref, record in retrieved_data.items():
+            values = [str(v) for v in record.values() if isinstance(v, str)]
+            sources[ref] = " ".join(values)
+        return sources
 
     @staticmethod
     def _passthrough_citation(sentence: str) -> dict[str, Any]:

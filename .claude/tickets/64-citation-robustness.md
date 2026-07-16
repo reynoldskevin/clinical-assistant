@@ -1,7 +1,7 @@
 ---
 id: 64
 title: Citation robustness — quote-match hardening, demote-vs-block nuance
-status: tests-authored
+status: ready-for-merge
 depends_on: [50]
 branch: ticket/64-citation-robustness
 base_branch: main
@@ -42,21 +42,21 @@ Two changes, both backward-compatible:
    path that supplies a model-authored quote.
 
 ## Acceptance criteria
-- [ ] `CitationGate.gate(claims)` and `gate(claims, sources=None)` are identical
+- [x] `CitationGate.gate(claims)` and `gate(claims, sources=None)` are identical
   (backward compatible); existing citation-gate behaviour and tests are unchanged.
-- [ ] With a `sources` map, a citation whose `quote_or_value` IS grounded in the
+- [x] With a `sources` map, a citation whose `quote_or_value` IS grounded in the
   cited source (normalized substring either direction) passes: routed to its
   record/guideline bucket, no flag.
-- [ ] A citation whose `quote_or_value` is NOT grounded in the provided source is
+- [x] A citation whose `quote_or_value` is NOT grounded in the provided source is
   DEMOTED: a `quote_mismatch` flag (carrying the `source_id`) is raised, the claim
   is kept out of the clean buckets and marked in the rendered answer, and the
   verdict is `pass_with_flags` — NOT `blocked`.
-- [ ] A `source_id` absent from `sources` is not quote-checked (no false demote).
-- [ ] Quote matching is case- and whitespace-insensitive and grounds a partial
+- [x] A `source_id` absent from `sources` is not quote-checked (no false demote).
+- [x] Quote matching is case- and whitespace-insensitive and grounds a partial
   quote in either direction; guideline citations are checked the same way.
-- [ ] `agent._apply_citation_split` passes a `sources` map built from
+- [x] `agent._apply_citation_split` passes a `sources` map built from
   `retrieved_data` (keyed by ref) into `CitationGate.gate`.
-- [ ] No regression: the T50 citation-gate / activation / blocked-sectioning tests
+- [x] No regression: the T50 citation-gate / activation / blocked-sectioning tests
   and the full sidecar suite stay green; the VerificationGate is untouched.
 
 ## Test plan (orchestrator authors these)
