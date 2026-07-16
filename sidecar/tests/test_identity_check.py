@@ -139,6 +139,24 @@ def test_empty_chart_dict_is_a_safe_match():
     assert result.checked_identifiers == []
 
 
+# --- no false alarm from a one-letter middle initial -------------------------
+
+def test_middle_initial_is_not_misread_as_sex():
+    # A one-letter middle initial (F. / M.) is ubiquitous on intake forms and must
+    # NEVER be read as the patient's sex — otherwise a CORRECT upload gets the
+    # wrong-chart banner. Only a spelled-out male/female counts on the intake side.
+    chart = {"fname": "John", "lname": "Kennedy", "dob": "1961-01-20", "sex": "Male"}
+    # (a) explicit correct sex present alongside an "F." initial — must still match.
+    explicit = check_identity("John F. Kennedy; DOB 1961-01-20; Male", chart)
+    assert explicit.matches is True
+    assert "sex" not in explicit.mismatched_identifiers
+    # (b) no spelled-out sex, only the initial — sex must not be inferred from it.
+    initial_only = check_identity("John F. Kennedy; DOB 1961-01-20", chart)
+    assert initial_only.matches is True
+    assert "sex" not in initial_only.mismatched_identifiers
+    assert "sex" not in initial_only.checked_identifiers
+
+
 # --- case / format insensitivity ---------------------------------------------
 
 def test_sex_matching_is_case_and_word_insensitive():
