@@ -1,7 +1,7 @@
 ---
 id: 69
 title: Clear the answer area when a new upload is triggered
-status: ready-for-merge
+status: done
 depends_on: []
 branch: ticket/69-clear-answer-on-upload
 base_branch: main
