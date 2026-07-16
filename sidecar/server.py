@@ -77,6 +77,23 @@ def _extract_model() -> str:
     """
     return os.environ.get("OE_AI_AGENT_EXTRACT_MODEL") or _DEFAULT_MODEL
 
+
+# The extractor fails over to these models, in order, when the primary extraction
+# model returns a transient availability error (overloaded / rate-limited / 5xx).
+# Sonnet is the default secondary: it satisfies the strict extraction contract
+# (unlike a faster tier) and draws on separate capacity, so a busy Opus vision
+# tier no longer fails an upload. Override/disable via OE_AI_AGENT_EXTRACT_FALLBACK_MODEL
+# (comma-separated list; empty string disables fallover).
+_DEFAULT_EXTRACT_FALLBACK = "claude-sonnet-4-6"
+
+
+def _extract_fallback_models() -> tuple[str, ...]:
+    """Return the ordered extraction fallback models, honoring the env override."""
+    raw = os.environ.get("OE_AI_AGENT_EXTRACT_FALLBACK_MODEL")
+    if raw is None:
+        raw = _DEFAULT_EXTRACT_FALLBACK
+    return tuple(m.strip() for m in raw.split(",") if m.strip())
+
 _BEARER_PREFIX = "Bearer "
 
 
@@ -444,8 +461,10 @@ def default_agent_builder(
     model = _configured_model()
     # The intake tool runs the VLM extractor mid-turn, so it uses the capable
     # extraction model (see _extract_model) rather than the chat-loop model —
-    # a fast chat tier must not weaken the strict-contract extraction.
+    # a fast chat tier must not weaken the strict-contract extraction. It fails
+    # over to the extraction fallback models when the primary is overloaded.
     extract_model = _extract_model()
+    extract_fallbacks = _extract_fallback_models()
 
     def build(pid: int, jwt: str) -> ClaudeAgent:
         cid = new_correlation_id()
@@ -465,7 +484,7 @@ def default_agent_builder(
             ]
             + build_documents_tools(chart_boundary)
             + [
-                build_intake_tool(chart_boundary, message_creator, extract_model),
+                build_intake_tool(chart_boundary, message_creator, extract_model, extract_fallbacks),
                 build_evidence_retriever_tool(
                     get_guideline_index(), tracer=observer
                 ),
@@ -566,6 +585,7 @@ def default_extract_builder(
     """
     chart_url = read_url or summary_url.replace("summary.php", "read.php")
     model = _extract_model()
+    fallback_models = _extract_fallback_models()
 
     def extract(pid: int, jwt: str, document_id: int, doc_type: str) -> dict[str, Any]:
         cid = new_correlation_id()
@@ -577,6 +597,7 @@ def default_extract_builder(
             chart_boundary=chart_boundary,
             message_creator=message_creator,
             model=model,
+            fallback_models=fallback_models,
         )
         # Only the validated fact + PHI-free telemetry cross back to the browser;
         # never the raw document bytes or the VLM's unparsed text.

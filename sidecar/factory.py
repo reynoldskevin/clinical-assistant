@@ -357,6 +357,7 @@ def build_intake_tool(
     chart_boundary: ChartBoundary,
     message_creator: Callable[..., Any],
     model: str = "claude-opus-4-8",
+    fallback_models: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """Turn a chart boundary + VLM into the intake-form extraction ToolSpec.
 
@@ -406,6 +407,7 @@ def build_intake_tool(
             chart_boundary=chart_boundary,
             message_creator=message_creator,
             model=model,
+            fallback_models=fallback_models,
         )
         fact = result.fact
 
