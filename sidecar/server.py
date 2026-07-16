@@ -605,6 +605,7 @@ def default_extract_builder(
             "ok": True,
             "doc_type": result.doc_type,
             "confidence": result.confidence,
+            "low_confidence": result.low_confidence,
             "unsupported_fields": result.unsupported_fields,
             "fact": result.fact.model_dump(),
             "correlation_id": cid,

@@ -10,7 +10,7 @@ validate-and-passthrough: they raise on a contract violation but return the
 ORIGINAL data unchanged, so nothing (including unknown fields) is dropped from
 what the agent ultimately receives.
 """
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
@@ -176,6 +176,29 @@ class IntakeFact(BaseModel):
     allergies: Optional[str]
     family_history: Optional[str]
     source_citation: str = Field(min_length=1)
+
+
+class ExtractionEnvelope(BaseModel):
+    """The whole VLM extraction envelope, parsed strictly before the fact is.
+
+    "Parse, don't validate": the raw JSON the VLM returns is turned into this
+    typed model at the boundary, so downstream code works with values that
+    already guarantee their own validity.
+
+    * ``confidence`` is a float constrained to ``[0, 1]`` — an out-of-range,
+      non-numeric, missing, or ``None`` confidence raises ``ValidationError``.
+    * ``unsupported_fields`` is a list of field names, defaulting to ``[]``. A
+      non-list (e.g. a bare string) raises ``ValidationError`` rather than being
+      coerced into a per-character list.
+    * ``fact`` is the raw fact object (validated against the doc-type contract
+      downstream); a non-object (e.g. a string) raises ``ValidationError`` here.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    confidence: float = Field(ge=0, le=1)
+    unsupported_fields: list[str] = Field(default_factory=list)
+    fact: dict[str, Any]
 
 
 # --- validate-and-passthrough helpers ----------------------------------------
