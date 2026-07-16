@@ -57,6 +57,15 @@ def test_prompt_resolves_unspecified_concern_to_intake_form():
     assert "this concern" in _PROMPT
 
 
+def test_prompt_instructs_wrong_chart_identity_check():
+    # Safety net: an uploaded document whose identifiers don't match the open
+    # chart must be flagged as a possible wrong-patient upload, not silently
+    # treated as this patient's data. Pin the instruction so it can't regress.
+    assert "wrong-chart" in _PROMPT or "wrong-patient" in _PROMPT
+    assert "date of birth" in _PROMPT
+    assert "get_patient_summary" in _PROMPT
+
+
 def test_prompt_requires_citing_dated_numeric_sentences():
     # V2 demotes any sentence with a digit that lacks a valid [Sn] marker, so a
     # bare "last visit was April 8, 2026" (uncited) gets "(not supported...)".
