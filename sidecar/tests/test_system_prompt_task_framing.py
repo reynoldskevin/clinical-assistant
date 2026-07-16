@@ -47,6 +47,16 @@ def test_prompt_instructs_same_line_distinct_marker_citation():
     assert "names no specific record" in _PROMPT
 
 
+def test_prompt_resolves_unspecified_concern_to_intake_form():
+    # Regression guard: a deictic "this concern" / "has the patient had this
+    # before?" must be resolved from the intake-form chief_concern via
+    # get_intake_form, not bounced back to the user for clarification. Weaker
+    # chat tiers won't make this leap without the instruction.
+    assert "chief_concern" in _PROMPT
+    assert "get_intake_form" in _PROMPT
+    assert "this concern" in _PROMPT
+
+
 def test_prompt_requires_citing_dated_numeric_sentences():
     # V2 demotes any sentence with a digit that lacks a valid [Sn] marker, so a
     # bare "last visit was April 8, 2026" (uncited) gets "(not supported...)".
