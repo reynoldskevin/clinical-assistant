@@ -49,6 +49,14 @@ All in `agent-widget.js` (dependency-free vanilla DOM, no Bootstrap collapse JS)
 The live streaming/render path is otherwise unchanged; only the previous turn's
 disposal changes from "discard" to "archive into history".
 
+5. **No submitting while thinking.** While a turn is in flight (the Ask button is
+   disabled via `setBusy(true)` from submit until the answer arrives), a new
+   question is ignored: the form-submit handler returns early when the Ask button
+   is disabled (covering a button click, a programmatic submit, AND Enter), and
+   the Enter keydown additionally short-circuits. This prevents a mid-answer
+   follow-up from starting a second turn (and archiving an in-flight "Thinking…"
+   turn).
+
 ## Acceptance criteria
 - [x] A `.oe-ai-agent-history` container is created and positioned as a sibling
   BEFORE `.oe-ai-agent-answer` (archived turns render above the live area).
@@ -68,6 +76,10 @@ disposal changes from "discard" to "archive into history".
   its question) and leaves the live answer empty — nothing is silently discarded.
 - [x] The first question (no prior turn) creates NO history item; when there is no
   tracked question, the live area is still simply cleared (T69 semantics intact).
+- [x] While the model is thinking (Ask button disabled), a new question is
+  ignored — no new turn is started/archived and no request fires — whether
+  submitted via the button, a programmatic submit, or Enter; once the turn
+  completes, Enter submits again normally.
 - [x] No regression: the T69 `agent-widget-clear.test.js` suite stays green; lint
   clean under `eslint --quiet`.
 
