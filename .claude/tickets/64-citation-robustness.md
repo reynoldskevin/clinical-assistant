@@ -1,7 +1,7 @@
 ---
 id: 64
 title: Citation robustness — quote-match hardening, demote-vs-block nuance
-status: ready-for-merge
+status: done
 depends_on: [50]
 branch: ticket/64-citation-robustness
 base_branch: main
