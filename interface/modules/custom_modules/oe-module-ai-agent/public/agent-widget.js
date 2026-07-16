@@ -431,6 +431,12 @@
 
     form.addEventListener('submit', function (evt) {
         evt.preventDefault();
+        // Ignore new questions while a turn is in flight ("thinking"): the Ask
+        // button is disabled during that window, and this guard makes the block
+        // apply to Enter and any programmatic submit too, not just a button click.
+        if (submit && submit.disabled) {
+            return;
+        }
         var text = (question.value || '').trim();
         if (text === '') {
             return;
@@ -725,6 +731,10 @@
     question.addEventListener('keydown', function (evt) {
         if (evt.key === 'Enter' && !evt.shiftKey) {
             evt.preventDefault();
+            // Don't submit while a turn is in flight ("thinking").
+            if (submit && submit.disabled) {
+                return;
+            }
             if (typeof form.requestSubmit === 'function') {
                 form.requestSubmit();
             } else {

@@ -3,13 +3,14 @@
  *
  * T70 acceptance test (LOCKED) — previous Q&A turns become collapsible accordions
  * (question visible as the heading, answer revealed on click) stacked
- * chronologically ABOVE the live answer area, instead of being cleared.
+ * chronologically ABOVE the live answer area, instead of being cleared. Also locks
+ * that a new question is ignored while the model is "thinking" (the Ask button is
+ * disabled and Enter does not submit).
  *
  * The widget (`agent-widget.js`) is a self-executing IIFE. We scaffold its DOM,
  * execute it, then drive the real submit handlers. `fetch` never resolves, so the
- * archiving (which happens synchronously on submit, before the network turn) is
- * what we observe; a turn's answer is simulated by setting the live answer content
- * between submits (standing in for the streamed render).
+ * turn stays "in flight" (busy) until the test simulates completion — mirroring
+ * how the real `.finally` re-enables the Ask button when the answer arrives.
  */
 /* global __dirname */
 const fs = require('fs');
@@ -50,9 +51,12 @@ function askQuestion(text) {
     el('.oe-ai-agent-form').dispatchEvent(new Event('submit', { cancelable: true }));
 }
 
-// Stand in for the streamed answer landing in the live area for the current turn.
-function simulateAnswer(text) {
+// Stand in for the streamed answer landing AND the turn completing: the answer
+// content appears in the live area and the Ask button re-enables (as the real
+// `.finally(setBusy(false))` does when the answer arrives).
+function answerArrives(text) {
     el('.oe-ai-agent-answer').textContent = text;
+    el('.oe-ai-agent-submit').disabled = false;
 }
 
 function attachFileAndUpload(hasFile) {
@@ -75,14 +79,13 @@ describe('agent-widget: Q&A history accordions', () => {
         const history = el('.oe-ai-agent-history');
         const answer = el('.oe-ai-agent-answer');
         expect(history).not.toBeNull();
-        // history is a previous sibling of the live answer (renders above it).
         expect(history.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING)
             .toBeTruthy();
     });
 
     test('asking a second question archives the first turn as a collapsed accordion', () => {
         askQuestion('What are the active medications?');
-        simulateAnswer('Metformin 500mg and lisinopril 10mg.');
+        answerArrives('Metformin 500mg and lisinopril 10mg.');
         askQuestion('What is the latest A1c?');
 
         const turns = document.querySelectorAll('.oe-ai-agent-history .oe-ai-agent-turn');
@@ -90,23 +93,20 @@ describe('agent-widget: Q&A history accordions', () => {
 
         const heading = el('.oe-ai-agent-turn-q', turns[0]);
         const body = el('.oe-ai-agent-turn-a', turns[0]);
-        // The question is the always-visible heading; the answer is in the body.
         expect(heading.textContent).toContain('What are the active medications?');
         expect(body.textContent).toContain('Metformin 500mg and lisinopril 10mg.');
 
-        // Collapsed by default.
         expect(heading.tagName).toBe('BUTTON');
         expect(heading.getAttribute('aria-expanded')).toBe('false');
         expect(body.hasAttribute('hidden')).toBe(true);
 
-        // The archived answer is no longer in the live area.
         expect(el('.oe-ai-agent-answer').textContent)
             .not.toContain('Metformin 500mg and lisinopril 10mg.');
     });
 
     test('clicking the heading expands then collapses the answer', () => {
         askQuestion('Q1');
-        simulateAnswer('A1');
+        answerArrives('A1');
         askQuestion('Q2');
 
         const heading = el('.oe-ai-agent-turn-q');
@@ -123,9 +123,9 @@ describe('agent-widget: Q&A history accordions', () => {
 
     test('multiple turns are stacked chronologically (oldest first, newest nearest live)', () => {
         askQuestion('Q1');
-        simulateAnswer('A1');
+        answerArrives('A1');
         askQuestion('Q2');
-        simulateAnswer('A2');
+        answerArrives('A2');
         askQuestion('Q3');
 
         const headings = document.querySelectorAll('.oe-ai-agent-history .oe-ai-agent-turn-q');
@@ -136,7 +136,7 @@ describe('agent-widget: Q&A history accordions', () => {
 
     test('uploading a document archives the current turn and clears the live area', () => {
         askQuestion('What meds is the patient on?');
-        simulateAnswer('Metformin.');
+        answerArrives('Metformin.');
 
         attachFileAndUpload(true);
 
@@ -144,7 +144,6 @@ describe('agent-widget: Q&A history accordions', () => {
         expect(turns.length).toBe(1);
         expect(el('.oe-ai-agent-turn-q', turns[0]).textContent).toContain('What meds is the patient on?');
         expect(el('.oe-ai-agent-turn-a', turns[0]).textContent).toContain('Metformin.');
-        // Live area cleared for the extraction that follows.
         expect(el('.oe-ai-agent-answer').textContent).toBe('');
     });
 
@@ -152,5 +151,47 @@ describe('agent-widget: Q&A history accordions', () => {
         askQuestion('First question, nothing before it.');
         const turns = document.querySelectorAll('.oe-ai-agent-history .oe-ai-agent-turn');
         expect(turns.length).toBe(0);
+    });
+});
+
+describe('agent-widget: no submitting while the model is thinking', () => {
+    beforeEach(() => {
+        document.body.innerHTML = SCAFFOLD;
+        global.fetch = jest.fn(() => new Promise(() => {}));
+        loadWidget();
+    });
+
+    test('the Ask button is disabled while thinking', () => {
+        askQuestion('A question that is now in flight');
+        expect(el('.oe-ai-agent-submit').disabled).toBe(true);
+    });
+
+    test('a second question submitted while thinking is ignored (no new turn, no request)', () => {
+        askQuestion('First, still thinking...');
+        // Do NOT complete the turn — the model is still "thinking" (button disabled).
+        const callsAfterFirst = global.fetch.mock.calls.length;
+
+        askQuestion('Second, fired while busy');
+
+        // The in-flight turn is neither archived nor replaced, and no new request fired.
+        expect(document.querySelectorAll('.oe-ai-agent-history .oe-ai-agent-turn').length).toBe(0);
+        expect(global.fetch.mock.calls.length).toBe(callsAfterFirst);
+    });
+
+    test('Enter does not submit while thinking, but submits again once idle', () => {
+        askQuestion('First question');
+        const callsAfterFirst = global.fetch.mock.calls.length;
+
+        // Enter while thinking must NOT start a new turn.
+        el('.oe-ai-agent-question').value = 'sneaky follow-up while busy';
+        el('.oe-ai-agent-question')
+            .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        expect(global.fetch.mock.calls.length).toBe(callsAfterFirst);
+
+        // Once the turn completes (button re-enabled), Enter works again.
+        el('.oe-ai-agent-submit').disabled = false;
+        el('.oe-ai-agent-question')
+            .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        expect(global.fetch.mock.calls.length).toBe(callsAfterFirst + 1);
     });
 });
