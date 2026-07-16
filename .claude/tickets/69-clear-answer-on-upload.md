@@ -1,7 +1,7 @@
 ---
 id: 69
 title: Clear the answer area when a new upload is triggered
-status: tests-authored
+status: ready-for-merge
 depends_on: []
 branch: ticket/69-clear-answer-on-upload
 base_branch: main
@@ -30,14 +30,14 @@ behavior is locked (there was no JS coverage for the widget before — the T68
 banner and this both rendered/behaved with read-only verification).
 
 ## Acceptance criteria
-- [ ] Triggering an upload with a file selected clears `.oe-ai-agent-answer`
+- [x] Triggering an upload with a file selected clears `.oe-ai-agent-answer`
   (the previous answer/response) synchronously on submit, mirroring ask-submit.
-- [ ] Submitting the upload form with NO file selected does NOT clear the answer
+- [x] Submitting the upload form with NO file selected does NOT clear the answer
   area (it only shows the "Choose a file to upload." status) — the clear happens
   only for a real upload, after the no-file guard.
-- [ ] The existing upload behavior is otherwise unchanged: `clearExtract()` still
+- [x] The existing upload behavior is otherwise unchanged: `clearExtract()` still
   runs, the "Uploading..." status still shows, and the POST still fires.
-- [ ] No regression: the module's jest suite stays green.
+- [x] No regression: the module's jest suite stays green.
 
 ## Test plan (orchestrator authors these)
 - unit (jsdom) `interface/modules/custom_modules/oe-module-ai-agent/tests/agent-widget-clear.test.js`:

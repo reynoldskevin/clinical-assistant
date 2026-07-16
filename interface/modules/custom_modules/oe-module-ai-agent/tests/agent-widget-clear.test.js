@@ -10,6 +10,7 @@
  * the assertions observe the SYNCHRONOUS clear that happens before the network
  * call (exactly how ask-submit clears via showThinking()).
  */
+/* global __dirname */
 const fs = require('fs');
 const path = require('path');
 
@@ -37,7 +38,6 @@ const SCAFFOLD = `
 
 function loadWidget() {
     // Execute the IIFE against the current jsdom document.
-    // eslint-disable-next-line no-new-func
     new Function(WIDGET_SRC)();
 }
 

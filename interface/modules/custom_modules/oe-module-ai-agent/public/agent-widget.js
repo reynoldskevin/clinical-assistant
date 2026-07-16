@@ -607,6 +607,11 @@
                 uploadSubmit.disabled = true;
             }
             setStatus('Uploading...', true);
+            // Mirror the ask-submit behavior: a new upload clears the previous
+            // answer/response so a stale answer never lingers above the new
+            // extraction. Only runs once a real upload starts (past the no-file
+            // guard above).
+            answer.textContent = '';
             clearExtract();
 
             fetch(uploadUrl, {
