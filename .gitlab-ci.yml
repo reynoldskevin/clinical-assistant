@@ -29,10 +29,37 @@ workflow:
 
 stages:
   - test
+  - security
   - eval
 
 default:
   image: python:3.12-slim
+
+# --- Security tier (T66) -----------------------------------------------------
+# Two blocking, secret-free gates that run on every MR and branch push (they
+# declare no rules, so they inherit the top-level workflow rules). Tooling is
+# pinned in sidecar/requirements-security.txt so the scans are reproducible.
+
+# Dependency audit: fail the pipeline on any known advisory in the sidecar
+# dependency tree (declared + resolved transitives). No secret required.
+security:deps:
+  stage: security
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install -r sidecar/requirements-security.txt
+  script:
+    - pip-audit -r sidecar/requirements.txt -r sidecar/requirements-dev.txt
+
+# Static security scan: bandit over the sidecar Python, excluding the
+# assert-heavy test tree (B101 noise). -ll reports medium+ severity; accepted
+# findings are annotated with scoped `# nosec BXXX` in-source. No secret required.
+security:scan:
+  stage: security
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install -r sidecar/requirements-security.txt
+  script:
+    - bandit -r sidecar -x sidecar/tests -ll
 
 # Deterministic offline eval tests — the per-push BLOCKING gate. Runs on every
 # MR and branch push (and in schedule/tag/web pipelines too) and must pass to merge.

@@ -85,7 +85,7 @@ def _do_request(url, method, headers, body, timeout):
 
     start = time.perf_counter()
     try:
-        resp = urllib.request.urlopen(req, timeout=timeout)
+        resp = urllib.request.urlopen(req, timeout=timeout)  # nosec B310 # load-test harness hits an operator-supplied http(s) target
         resp.read()
         resp.close()
         return (time.perf_counter() - start) * 1000.0, False

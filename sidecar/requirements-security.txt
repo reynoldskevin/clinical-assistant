@@ -1,0 +1,12 @@
+# Pinned tooling for the CI security tier (T66).
+#
+# These tools power the two blocking `security` jobs in .gitlab-ci.yml:
+#   * pip-audit — audits the sidecar dependency tree (requirements.txt /
+#     requirements-dev.txt) against the PyPI advisory DB for known CVEs.
+#   * bandit    — static scan of the sidecar Python for insecure patterns
+#     (shell injection, weak crypto, hardcoded secrets, etc.).
+#
+# Exact-pinned (not floating) so the security scans are reproducible and cannot
+# silently drift to a different tool version between pipeline runs.
+pip-audit==2.10.1
+bandit==1.9.4

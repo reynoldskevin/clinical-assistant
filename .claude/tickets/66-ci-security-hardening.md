@@ -1,7 +1,7 @@
 ---
 id: 66
 title: CI hardening — dependency audit + security scan on every PR
-status: tests-authored
+status: ready-for-merge
 depends_on: [52]
 branch: ticket/66-ci-security-hardening
 base_branch: main
@@ -39,21 +39,21 @@ tree during implementation so the jobs land green (any real finding is fixed by
 pin/upgrade for deps, or fixed / documented-skip for bandit).
 
 ## Acceptance criteria
-- [ ] `.gitlab-ci.yml` declares a `security` stage and two jobs, `security:deps`
+- [x] `.gitlab-ci.yml` declares a `security` stage and two jobs, `security:deps`
   and `security:scan`, both assigned `stage: security`.
-- [ ] Both security jobs are BLOCKING: no rule sets `when: manual`, and neither
+- [x] Both security jobs are BLOCKING: no rule sets `when: manual`, and neither
   the job nor any rule sets `allow_failure: true`; they are not restricted to
   schedule/tag-only (they run on merge requests and branch pushes).
-- [ ] Both security jobs are secret-free: no `ANTHROPIC_API_KEY` (or other secret)
+- [x] Both security jobs are secret-free: no `ANTHROPIC_API_KEY` (or other secret)
   appears in the job definition.
-- [ ] `security:deps` runs `pip-audit` against the sidecar requirements
+- [x] `security:deps` runs `pip-audit` against the sidecar requirements
   manifest(s); `security:scan` runs `bandit` over the sidecar source.
-- [ ] A pinned `sidecar/requirements-security.txt` exists declaring both
+- [x] A pinned `sidecar/requirements-security.txt` exists declaring both
   `pip-audit` and `bandit` with version specifiers, and both jobs install their
   tooling from it.
-- [ ] The T52 gate is intact: `eval:offline` is still present and blocking and
+- [x] The T52 gate is intact: `eval:offline` is still present and blocking and
   `eval:live` still carries the secret (no regression to the existing pipeline).
-- [ ] The tools pass on the current tree (pip-audit reports no unresolved
+- [x] The tools pass on the current tree (pip-audit reports no unresolved
   advisory; bandit reports no unaddressed finding), so the new jobs are green;
   the full sidecar pytest suite stays green.
 

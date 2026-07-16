@@ -51,7 +51,7 @@ def _req(method: str, path: str, key: str, body: dict | None = None) -> tuple[in
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(request, timeout=30) as resp:
+        with urllib.request.urlopen(request, timeout=30) as resp:  # nosec B310 # dev tool: fixed https API_BASE, not user-controlled
             return resp.status, json.loads(resp.read() or b"null")
     except urllib.error.HTTPError as e:
         return e.code, (e.read().decode() if e.fp else str(e))
