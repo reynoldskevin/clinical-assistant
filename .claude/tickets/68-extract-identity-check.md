@@ -1,7 +1,7 @@
 ---
 id: 68
 title: Proactive wrong-chart / wrong-patient check at extraction time
-status: tests-authored
+status: ready-for-merge
 depends_on: [47]
 branch: ticket/68-extract-identity-check
 base_branch: main
@@ -55,30 +55,30 @@ The existing prompt-based check (agent.py) stays as the answer-time backstop; th
 adds the proactive extract-time surface the requirement asks for.
 
 ## Acceptance criteria
-- [ ] `check_identity` flags a clear conflict: differing DOB → `"DOB"` in
+- [x] `check_identity` flags a clear conflict: differing DOB → `"DOB"` in
   `mismatched_identifiers`; differing sex → `"sex"`; a chart surname absent from the
   intake name → `"name"`. `matches` is false iff `mismatched_identifiers` is non-empty.
-- [ ] It is conservative: an identifier absent or unparseable on either side is NOT
+- [x] It is conservative: an identifier absent or unparseable on either side is NOT
   checked and NEVER a mismatch; when nothing is comparable, `matches` is true with
   empty `checked_identifiers` (fail-open, no warning). `None`/empty inputs are safe.
-- [ ] Matching is case- and format-insensitive where it should be: `"Female"` vs
+- [x] Matching is case- and format-insensitive where it should be: `"Female"` vs
   `"F"`, `"male"` vs `"M"` match; a surname matches as a case-insensitive token;
   only ISO `YYYY-MM-DD` DOBs are compared (an unparseable date is not checked).
-- [ ] Real-fixture behaviour: intake `"Jordan A. Rivera; DOB 1988-03-02; Male"`
+- [x] Real-fixture behaviour: intake `"Jordan A. Rivera; DOB 1988-03-02; Male"`
   against a chart `{lname: "Cruickshank494", fname: "Brett333", dob: "1925-06-24",
   sex: "Female"}` → mismatch on name+DOB+sex; a matching intake
   (`"Brett333 Cruickshank494; DOB 1925-06-24; Female"`) → `matches` true.
-- [ ] `default_extract_builder`'s `/extract` response includes an `identity_check`
+- [x] `default_extract_builder`'s `/extract` response includes an `identity_check`
   block for an `intake_form` whose identifiers mismatch the chart summary
   (`matches` false, the mismatched list, `warning == "possible_wrong_chart"`), and
   a matching intake yields `matches` true.
-- [ ] The check is scoped + fail-open: a `lab_pdf` extraction carries NO
+- [x] The check is scoped + fail-open: a `lab_pdf` extraction carries NO
   `identity_check`; if the summary boundary raises, the extraction still returns the
   fact (200) with no `identity_check` and no error surfaced.
-- [ ] `agent-widget.js` renders the "Possible wrong-chart / wrong-patient upload" +
+- [x] `agent-widget.js` renders the "Possible wrong-chart / wrong-patient upload" +
   "identifiers do not match this chart:" banner when `identity_check.matches` is
   false (verified by reading; no HTML injection).
-- [ ] No regression: the existing extractor / extract-endpoint / intake-tool /
+- [x] No regression: the existing extractor / extract-endpoint / intake-tool /
   wrong-chart-eval tests and the full sidecar suite stay green; the prompt-based
   agent check is untouched.
 

@@ -490,6 +490,27 @@
             heading.textContent = label + ' · confidence ' + pct + '%';
             panel.appendChild(heading);
 
+            // Proactive wrong-chart / wrong-patient warning: shown the moment an
+            // intake form is extracted whose identifiers do not match this chart.
+            var identityCheck = data.identity_check;
+            if (identityCheck && identityCheck.matches === false) {
+                var warn = document.createElement('div');
+                warn.className = 'alert alert-danger p-2 mb-2 small';
+
+                var warnTitle = document.createElement('div');
+                warnTitle.className = 'font-weight-bold';
+                warnTitle.textContent = 'Possible wrong-chart / wrong-patient upload';
+                warn.appendChild(warnTitle);
+
+                var mismatched = identityCheck.mismatched_identifiers || [];
+                var warnDetail = document.createElement('div');
+                warnDetail.textContent = 'identifiers do not match this chart: '
+                    + mismatched.map(humanize).join(', ');
+                warn.appendChild(warnDetail);
+
+                panel.appendChild(warn);
+            }
+
             var fact = data.fact || {};
             var order = FACT_FIELDS[data.doc_type] || [];
             var keys = order.filter(function (k) {
