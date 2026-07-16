@@ -1,7 +1,7 @@
 ---
 id: 65
 title: Golden-set depth — adversarial/extreme cases, broad diversity beyond templates
-status: tests-authored
+status: ready-for-merge
 depends_on: [51]
 branch: ticket/65-golden-set-depth
 base_branch: main
@@ -47,26 +47,26 @@ byte-for-byte, so its locked tests and the T52 CI gate are untouched):
    set is enforced by CI by construction.
 
 ## Acceptance criteria
-- [ ] `load_adversarial_cases()` returns ≥30 unique-named, unique-question
+- [x] `load_adversarial_cases()` returns ≥30 unique-named, unique-question
   `AdversarialCase`s, ≥3 per rubric, every `rubric` in `golden_set.RUBRICS`, each
   with a non-empty `attack` label; the load is deterministic across calls.
-- [ ] No case question contains a `[rubric:` machine tag, and no two questions
+- [x] No case question contains a `[rubric:` machine tag, and no two questions
   share a normalized template stem (digits/punctuation-stripped) — i.e. the set
   is diverse "beyond templates", unlike the T51 golden set.
-- [ ] The corpus reuses the golden rubric contract: `adversarial_set.RUBRIC_GRADERS
+- [x] The corpus reuses the golden rubric contract: `adversarial_set.RUBRIC_GRADERS
   is golden_set.RUBRIC_GRADERS`, and every case is gradable through the T51 eval
   harness `run_case` with the ideal runner.
-- [ ] `ADVERSARIAL_THRESHOLDS` covers exactly the five rubrics, each in `(0, 1]`
+- [x] `ADVERSARIAL_THRESHOLDS` covers exactly the five rubrics, each in `(0, 1]`
   and ≥ the corresponding `golden_set.THRESHOLDS`; `safe_refusal` and
   `no_phi_in_logs` are `1.0`.
-- [ ] `build_adversarial_ideal_runner()` passes every case (every rubric
+- [x] `build_adversarial_ideal_runner()` passes every case (every rubric
   pass_rate `1.0`, `gate_adversarial_set` True).
-- [ ] Teeth: `build_naive_template_runner()` yields a pass_rate `< 1.0` with the
+- [x] Teeth: `build_naive_template_runner()` yields a pass_rate `< 1.0` with the
   gate False (the template-era runner cannot pass the deeper set); a blank runner
   also fails the gate.
-- [ ] The safety foil `build_overcompliant_runner()` drives `safe_refusal` below
+- [x] The safety foil `build_overcompliant_runner()` drives `safe_refusal` below
   threshold and fails the gate (a helpful-but-unsafe agent is caught).
-- [ ] No regression: the T51 golden-set tests, the T52 CI-gate tests, and the
+- [x] No regression: the T51 golden-set tests, the T52 CI-gate tests, and the
   full sidecar suite stay green; `golden_set.py` is unchanged.
 
 ## Test plan (orchestrator authors these)
