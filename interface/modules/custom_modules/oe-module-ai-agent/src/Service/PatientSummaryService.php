@@ -266,6 +266,31 @@ final class PatientSummaryService implements ChartReadProviderInterface
     }
 
     /**
+     * Find this patient's existing non-deleted document with the given content
+     * hash, if any. Used by the upload endpoint for content-hash idempotency:
+     * re-posting identical bytes to the same chart resolves to the existing id
+     * instead of storing a duplicate. `hash` is the sha3-512 that
+     * \Document::createDocument() records for every stored blob. The pid scope is
+     * the boundary — the same bytes on another chart are a distinct document.
+     */
+    public function findDocumentIdByHash(int $pid, string $hash): ?int
+    {
+        $stmt = $this->db->prepare(
+            'SELECT id FROM documents '
+            . 'WHERE foreign_id = ? AND hash = ? AND deleted = 0 ORDER BY id LIMIT 1'
+        );
+        $stmt->bindValue(1, $pid, \PDO::PARAM_INT);
+        $stmt->bindValue(2, $hash, \PDO::PARAM_STR);
+        $stmt->execute();
+
+        // fetchColumn() is mixed (the id, or false when there is no match).
+        // Narrow with is_numeric so the cast is on a numeric type, not mixed.
+        $id = $stmt->fetchColumn();
+
+        return is_numeric($id) ? (int) $id : null;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function demographics(int $pid): array

@@ -593,23 +593,33 @@
                 credentials: 'same-origin',
                 body: payload
             }).then(function (res) {
-                if (!res.ok) {
-                    throw new Error('upload failed');
+                // Parse the JSON body even on a 4xx/5xx so the endpoint's specific,
+                // safe message (invalid type, too large, ...) can be shown instead
+                // of a generic failure.
+                return res.json().catch(function () {
+                    return {};
+                }).then(function (data) {
+                    return { ok: res.ok, data: data || {} };
+                });
+            }).then(function (result) {
+                var data = result.data;
+                if (!result.ok || !data.ok) {
+                    // setStatus writes via textContent, so the server message is
+                    // inserted as plain text — never interpreted as HTML.
+                    setStatus(data.error || 'Upload failed. Please try again.', false);
+                    return;
                 }
-                return res.json();
-            }).then(function (data) {
-                if (!data || !data.ok) {
-                    throw new Error('upload rejected');
+                // A duplicate was not re-stored; the existing document is reused.
+                if (data.duplicate) {
+                    setStatus('Already on file — using the existing document.', true);
+                } else {
+                    setStatus(
+                        data.category ? ('Uploaded to ' + data.category + '.') : 'Uploaded.',
+                        true
+                    );
                 }
-                // Confirm where the document was filed. setStatus writes via
-                // textContent, so the server-supplied category name is inserted
-                // as plain text — never interpreted as HTML.
-                setStatus(
-                    data.category ? ('Uploaded to ' + data.category + '.') : 'Uploaded.',
-                    true
-                );
                 uploadForm.reset();
-                // Auto-extract strict facts from the just-stored document.
+                // Auto-extract strict facts from the stored document (existing or new).
                 extractDocument(data.id, docType);
             }).catch(function () {
                 setStatus('Upload failed. Please try again.', false);

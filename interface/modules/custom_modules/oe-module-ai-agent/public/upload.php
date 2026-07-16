@@ -33,6 +33,9 @@ use OpenEMR\Common\Csrf\CsrfUtils;
 use OpenEMR\Common\Logging\SystemLogger;
 use OpenEMR\Common\Session\SessionWrapperFactory;
 use OpenEMR\Modules\AiAgent\Auth\ClinicalAccessPolicy;
+use OpenEMR\Modules\AiAgent\Ingestion\DocumentUploadPolicy;
+use OpenEMR\Modules\AiAgent\Ingestion\UploadRejected;
+use OpenEMR\Modules\AiAgent\Service\PatientSummaryService;
 
 header('Content-Type: application/json');
 
@@ -97,10 +100,18 @@ if ($data === '') {
 }
 
 $name = (string) ($file['name'] ?? 'document');
-$mimetype = (string) ($file['type'] ?? 'application/octet-stream');
-if ($mimetype === '') {
-    $mimetype = 'application/octet-stream';
+
+// 6a. Robustness gate (T62): identify the file by its OWN magic bytes (not the
+//     browser-declared Content-Type, which the client controls), enforce the
+//     per-doc_type allow-list (lab report -> PDF; intake form -> PDF/PNG/JPEG)
+//     and the size cap, then adopt the sniffed canonical mimetype for storage. A
+//     rejection is the caller's file, so it returns a specific 4xx the card shows.
+try {
+    $accepted = (new DocumentUploadPolicy())->inspect($data, $docType);
+} catch (UploadRejected $rejected) {
+    $fail($rejected->reason->httpStatus(), $rejected->reason->userMessage());
 }
+$mimetype = $accepted->canonicalMimetype;
 
 // 6b. Resolve a valid, FK-safe document category for the chosen doc_type. Look
 //     the category up by name from OpenEMR's own `categories` table so the id we
@@ -137,7 +148,15 @@ while ($row = sqlFetchArray($ancestors)) {
 }
 $categoryPath = implode(' > ', $segments);
 
-// 7. Store the file through OpenEMR's real document layer (audit trail, category,
+// 7. Content-hash idempotency (T62) + store, in one guarded block.
+//
+//    First: if this patient already has an identical, non-deleted document on
+//    file, resolve to that existing id instead of storing a duplicate. `hash` is
+//    the sha3-512 that \Document::createDocument() records for every stored blob,
+//    so hashing the bytes the same way matches a prior upload of the exact same
+//    file; the pid scope means the same bytes on another chart stay distinct.
+//
+//    Otherwise store through OpenEMR's real document layer (audit trail, category,
 //    filesystem storage). createDocument() returns '' on success and an error
 //    string on failure; it sets foreign_id to the patient and links the category.
 //
@@ -149,7 +168,35 @@ $categoryPath = implode(' > ', $segments);
 //    can json_encode the content and it matches the DocumentContent contract.
 //    Dropping this column copy once read.php fetches via \Document::get_data() is
 //    a deferred cleanup.
+$contentHash = hash('sha3-512', $data);
 try {
+    $pdo = new \PDO(
+        sprintf(
+            'mysql:host=%s;port=%s;dbname=%s',
+            (string) ($GLOBALS['host'] ?? 'localhost'),
+            (string) ($GLOBALS['port'] ?? '3306'),
+            (string) ($GLOBALS['dbase'] ?? ''),
+        ),
+        (string) ($GLOBALS['login'] ?? ''),
+        (string) ($GLOBALS['pass'] ?? ''),
+        [
+            \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+            \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
+        ],
+    );
+    $existingId = (new PatientSummaryService($pdo))->findDocumentIdByHash($pid, $contentHash);
+    if ($existingId !== null) {
+        // Idempotent: report the existing document (the card still extracts it)
+        // and stop before storing a second copy.
+        echo json_encode([
+            'ok' => true,
+            'id' => $existingId,
+            'category' => $categoryPath,
+            'duplicate' => true,
+        ]);
+        exit;
+    }
+
     $document = new \Document();
     $result = $document->createDocument($pid, $categoryId, $name, $mimetype, $data);
     if ($result !== '') {
