@@ -1,7 +1,7 @@
 ---
 id: 68
 title: Proactive wrong-chart / wrong-patient check at extraction time
-status: ready-for-merge
+status: done
 depends_on: [47]
 branch: ticket/68-extract-identity-check
 base_branch: main
