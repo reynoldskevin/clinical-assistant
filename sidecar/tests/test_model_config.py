@@ -9,10 +9,26 @@ weaken the strict-contract VLM extraction.
 """
 from server import (
     _configured_model,
+    _extract_fallback_models,
     _extract_model,
     default_agent_builder,
     default_extract_builder,
 )
+
+
+def test_extract_fallback_defaults_to_sonnet(monkeypatch):
+    monkeypatch.delenv("OE_AI_AGENT_EXTRACT_FALLBACK_MODEL", raising=False)
+    assert _extract_fallback_models() == ("claude-sonnet-4-6",)
+
+
+def test_extract_fallback_env_override_is_ordered_list(monkeypatch):
+    monkeypatch.setenv("OE_AI_AGENT_EXTRACT_FALLBACK_MODEL", "claude-sonnet-4-6, claude-haiku-4-5-20251001")
+    assert _extract_fallback_models() == ("claude-sonnet-4-6", "claude-haiku-4-5-20251001")
+
+
+def test_extract_fallback_empty_env_disables_fallover(monkeypatch):
+    monkeypatch.setenv("OE_AI_AGENT_EXTRACT_FALLBACK_MODEL", "")
+    assert _extract_fallback_models() == ()
 
 
 def test_default_model_is_opus_when_unset(monkeypatch):

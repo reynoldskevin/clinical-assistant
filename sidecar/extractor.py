@@ -48,6 +48,35 @@ _DOC_INSTRUCTIONS: dict[str, str] = {
 
 _MAX_TOKENS = 2048
 
+# HTTP status codes that signal a transient model-availability failure (server
+# overloaded / rate-limited / temporarily unavailable). On one of these it is
+# worth failing over to a secondary model rather than surfacing "extraction
+# unavailable" — the document is valid, the model was just busy. Checked without
+# importing the anthropic SDK (this module stays SDK-free) by inspecting the
+# exception's status_code / class name.
+_TRANSIENT_STATUS = frozenset({429, 500, 502, 503, 529})
+_TRANSIENT_NAMES = frozenset({
+    "OverloadedError",
+    "RateLimitError",
+    "InternalServerError",
+    "APIConnectionError",
+    "APITimeoutError",
+})
+
+
+def _is_transient_error(exc: BaseException) -> bool:
+    """True if ``exc`` is a transient model-availability error worth failing over.
+
+    A 529 (overloaded), 429 (rate limit), or 5xx from the model provider is
+    transient: the same request may succeed on another model with spare capacity.
+    A non-transient error (bad request, auth, a contract ValidationError) is not
+    caught here and propagates so it is never silently masked by a fallover.
+    """
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int) and status in _TRANSIENT_STATUS:
+        return True
+    return type(exc).__name__ in _TRANSIENT_NAMES
+
 
 @dataclass(frozen=True)
 class ExtractionResult:
@@ -125,12 +154,20 @@ def attach_and_extract(
     chart_boundary: Any,
     message_creator: Callable[..., Any],
     model: str = "claude-opus-4-8",
+    fallback_models: tuple[str, ...] = (),
 ) -> ExtractionResult:
     """Fetch a stored document pid-scoped and extract a strict fact from it.
 
     Reads the document through the pid-scoped boundary, sends its base64 bytes to
     the VLM as a vision message, validates the returned envelope's ``fact`` against
     the doc-type contract, and returns an :class:`ExtractionResult`.
+
+    ``model`` is tried first; if it fails with a transient availability error
+    (overloaded / rate-limited / 5xx — see :func:`_is_transient_error`) each of
+    ``fallback_models`` is tried in order. This keeps a single busy model (e.g. an
+    overloaded vision tier) from failing an otherwise-valid upload extraction. A
+    non-transient error, or a contract ``ValidationError`` on the returned
+    envelope, propagates unchanged — a fallover never masks a real failure.
     """
     contract = _CONTRACTS.get(doc_type)
     if contract is None:
@@ -166,12 +203,26 @@ def attach_and_extract(
         }
     ]
 
-    response = message_creator(
-        model=model,
-        max_tokens=_MAX_TOKENS,
-        system=system,
-        messages=messages,
-    )
+    # Try the primary model, then each fallback, but ONLY fail over on a
+    # transient availability error while a model remains. The model call is the
+    # only thing wrapped: parsing + contract validation happen after the loop, so
+    # a ValidationError propagates (422 "could not extract") without a fallover.
+    models = (model, *fallback_models)
+    response = None
+    for index, current in enumerate(models):
+        try:
+            response = message_creator(
+                model=current,
+                max_tokens=_MAX_TOKENS,
+                system=system,
+                messages=messages,
+            )
+            break
+        except Exception as exc:  # noqa: BLE001 - re-raised unless a fallover applies
+            if _is_transient_error(exc) and index < len(models) - 1:
+                continue
+            raise
+    assert response is not None  # the loop set response on break or re-raised
 
     text = next(
         block.text
