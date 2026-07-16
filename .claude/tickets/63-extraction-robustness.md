@@ -1,7 +1,7 @@
 ---
 id: 63
 title: Extraction robustness — degraded-scan envelopes, confidence tuning, missing-field matrix
-status: tests-authored
+status: ready-for-merge
 depends_on: [47]
 branch: ticket/63-extraction-robustness
 base_branch: main
@@ -44,24 +44,24 @@ so a "degraded scan" is a stubbed imperfect envelope):
    itself doubts is never surfaced.
 
 ## Acceptance criteria
-- [ ] Out-of-range confidence (`1.5`, `-0.1`), non-numeric confidence (`"high"`),
+- [x] Out-of-range confidence (`1.5`, `-0.1`), non-numeric confidence (`"high"`),
   and a missing confidence key each raise `ValidationError` (→ clean 422), not a
   silently-accepted value.
-- [ ] A non-object `fact` and a non-list `unsupported_fields` raise
+- [x] A non-object `fact` and a non-list `unsupported_fields` raise
   `ValidationError` rather than being coerced into garbage.
-- [ ] A model response with no text content block raises a clean `ValueError`
+- [x] A model response with no text content block raises a clean `ValueError`
   (mapped to 422), not `StopIteration`/502.
-- [ ] `ExtractionResult.low_confidence` is true iff `confidence <
+- [x] `ExtractionResult.low_confidence` is true iff `confidence <
   LOW_CONFIDENCE_THRESHOLD`; it appears in `telemetry()` and telemetry stays
   PHI-free.
-- [ ] `unsupported_fields` is derived from the actually-null fact fields:
+- [x] `unsupported_fields` is derived from the actually-null fact fields:
   exhaustively, for each nullable field set to null the result flags exactly that
   field even when the model reported an empty list; a fully-grounded fact yields
   an empty list.
-- [ ] A field the model lists in `unsupported_fields` is force-nulled (no invented
+- [x] A field the model lists in `unsupported_fields` is force-nulled (no invented
   value surfaced) and then appears in the derived list.
-- [ ] The `/extract` response body includes `low_confidence`.
-- [ ] No regression: the locked T47 extractor tests and the full sidecar suite
+- [x] The `/extract` response body includes `low_confidence`.
+- [x] No regression: the locked T47 extractor tests and the full sidecar suite
   stay green; strict-contract rejection (missing-required, hallucinated-extra) and
   transient-model fallover behaviour are unchanged.
 

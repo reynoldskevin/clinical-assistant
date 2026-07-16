@@ -23,7 +23,12 @@ import json
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from contracts import IntakeFact, LabFact
+from contracts import ExtractionEnvelope, IntakeFact, LabFact
+
+# A scan whose reported confidence falls BELOW this threshold is flagged
+# ``low_confidence`` — a degraded / rotated / noisy document the VLM was unsure
+# about. Exactly-at-threshold is NOT low (the comparison is strict ``<``).
+LOW_CONFIDENCE_THRESHOLD: float = 0.5
 
 # doc_type -> (contract model, human-readable label for the extraction prompt)
 _CONTRACTS: dict[str, type[LabFact] | type[IntakeFact]] = {
@@ -89,18 +94,21 @@ class ExtractionResult:
 
     doc_type: str
     confidence: float
+    low_confidence: bool
     unsupported_fields: list[str]
     fact: LabFact | IntakeFact
 
     def telemetry(self) -> dict[str, Any]:
         """Return a PHI-free, log-safe summary of this extraction.
 
-        Contains only the doc type, the confidence score, and counts — never an
-        extracted value, a citation, or the base64 blob.
+        Contains only the doc type, the confidence score, the low-confidence
+        flag, and counts — never an extracted value, a citation, or the base64
+        blob.
         """
         return {
             "doc_type": self.doc_type,
             "confidence": self.confidence,
+            "low_confidence": self.low_confidence,
             "field_count": len(type(self.fact).model_fields),
             "unsupported_count": len(self.unsupported_fields),
         }
@@ -224,20 +232,54 @@ def attach_and_extract(
             raise
     assert response is not None  # the loop set response on break or re-raised
 
+    # A degraded / odd model response may carry no text content block at all. The
+    # bare ``next(...)`` would raise StopIteration (a generic 502); surface a clean
+    # ValueError instead (mapped to 422 by process_extract).
     text = next(
-        block.text
-        for block in response.content
-        if getattr(block, "type", None) == "text"
+        (
+            block.text
+            for block in response.content
+            if getattr(block, "type", None) == "text"
+        ),
+        None,
     )
-    envelope = json.loads(_strip_json_fences(text))
+    if text is None:
+        raise ValueError("VLM response contained no text content block")
+
+    raw = json.loads(_strip_json_fences(text))
+
+    # Parse the whole envelope strictly first: an out-of-range/non-numeric/missing
+    # confidence, a non-list unsupported_fields, or a non-object fact raise
+    # ValidationError here (the existing 422 path) — do NOT catch it.
+    envelope = ExtractionEnvelope.model_validate(raw)
+
+    # Reconcile BEFORE validating the fact: force-null any fact field the model
+    # itself flagged as unsupported. A value the model doubted must never be
+    # surfaced — trust the flag over the guess (no invention).
+    fact_data = dict(envelope.fact)
+    for flagged in envelope.unsupported_fields:
+        if flagged in fact_data:
+            fact_data[flagged] = None
 
     # Schema is the source of truth: a missing-required or hallucinated-extra
     # field raises ValidationError here. Do NOT catch it — the raise is the guarantee.
-    fact = contract.model_validate(envelope["fact"])
+    fact = contract.model_validate(fact_data)
 
+    # DERIVE unsupported_fields authoritatively from the validated fact: every
+    # contract field (except source_citation) whose value is null. This cannot
+    # disagree with the actual values and flags a null field even when the model
+    # reported an empty list.
+    derived_unsupported = sorted(
+        name
+        for name in type(fact).model_fields
+        if name != "source_citation" and getattr(fact, name) is None
+    )
+
+    confidence = envelope.confidence
     return ExtractionResult(
         doc_type=doc_type,
-        confidence=float(envelope["confidence"]),
-        unsupported_fields=list(envelope.get("unsupported_fields", [])),
+        confidence=confidence,
+        low_confidence=confidence < LOW_CONFIDENCE_THRESHOLD,
+        unsupported_fields=derived_unsupported,
         fact=fact,
     )
