@@ -1,7 +1,7 @@
 ---
 id: 65
 title: Golden-set depth — adversarial/extreme cases, broad diversity beyond templates
-status: ready-for-merge
+status: done
 depends_on: [51]
 branch: ticket/65-golden-set-depth
 base_branch: main
