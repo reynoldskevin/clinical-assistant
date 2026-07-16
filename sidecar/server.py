@@ -766,7 +766,7 @@ def main() -> None:
     allow_origin = os.environ.get("OE_AI_AGENT_ALLOW_ORIGIN", "*")
     # On a platform that assigns a port (Railway sets $PORT), bind all interfaces
     # on that port by default; locally, stay on loopback:8900.
-    default_host = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"
+    default_host = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"  # nosec B104 # bind-all only when a platform ($PORT) requires it; loopback otherwise
     host = os.environ.get("OE_AI_AGENT_HOST", default_host)
     port = int(os.environ.get("OE_AI_AGENT_PORT") or os.environ.get("PORT") or "8900")
 
