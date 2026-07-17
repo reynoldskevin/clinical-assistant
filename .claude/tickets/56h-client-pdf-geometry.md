@@ -1,13 +1,13 @@
 ---
 id: 056h
 title: Client-side PDF citation geometry from the pdf.js text layer
-status: tests-authored
+status: ready-for-merge
 depends_on: [056g]
 branch: ticket/56h-client-pdf-geometry
 base_branch: ticket/56g-pdf-render
 test_command: "npx jest interface/modules/custom_modules/oe-module-ai-agent/tests/agent-widget-bbox.test.js"
 full_suite_command: "npx jest interface/modules/custom_modules/oe-module-ai-agent"
-attempts: 0
+attempts: 1
 ---
 
 ## Description

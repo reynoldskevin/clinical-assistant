@@ -58,7 +58,53 @@
                 var ctx = canvas.getContext('2d');
                 return page.render({ canvasContext: ctx, viewport: viewport }).promise
                     .then(function () {
-                        return canvas.toDataURL('image/png');
+                        var url = canvas.toDataURL('image/png');
+                        // Extract the text layer and map each run into viewport
+                        // (top-down pixel) space, then split runs into words with a
+                        // proportional sub-box each, so the widget can locate a
+                        // fact value on the actually-rendered page client-side.
+                        return page.getTextContent().then(function (tc) {
+                            var words = [];
+                            tc.items.forEach(function (item) {
+                                var str = item.str;
+                                if (typeof str !== 'string' || str.trim() === '') {
+                                    return;
+                                }
+                                // item.transform -> viewport space (baseline origin).
+                                var t = pdfjsLib.Util.transform(viewport.transform, item.transform);
+                                var runX = t[4];
+                                var baselineY = t[5];
+                                var fh = Math.hypot(t[2], t[3]) || Math.hypot(t[0], t[1]);
+                                var rw = item.width * viewport.scale;
+                                var topY = baselineY - fh;
+                                var L = str.length;
+                                if (L === 0) {
+                                    return;
+                                }
+                                // Split the run into words, tracking each word's
+                                // starting char index so its sub-box is proportional
+                                // to its position/length within the run's pixel width.
+                                var re = /\S+/g;
+                                var m;
+                                while ((m = re.exec(str)) !== null) {
+                                    var i = m.index;
+                                    var n = m[0].length;
+                                    words.push({
+                                        text: m[0],
+                                        x: Math.round(runX + (i / L) * rw),
+                                        y: Math.round(topY),
+                                        w: Math.round((n / L) * rw),
+                                        h: Math.round(fh)
+                                    });
+                                }
+                            });
+                            return {
+                                url: url,
+                                words: words,
+                                page_width: viewport.width,
+                                page_height: viewport.height
+                            };
+                        });
                     });
             });
         });

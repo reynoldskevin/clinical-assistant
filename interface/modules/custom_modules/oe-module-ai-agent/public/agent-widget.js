@@ -178,6 +178,104 @@
         }
     }
 
+    // Client-side citation-box locator — a faithful port of the sidecar's
+    // ``bbox.py`` (``locate_citation_boxes``). Maps a fact's quote onto a page's
+    // word geometry and returns one union box per rendered line. Used for the PDF
+    // path, where the page's OWN text-layer word geometry (from the render seam)
+    // locates each fact value on the actually-rendered page — no server geometry,
+    // so it works for any uploaded PDF rather than only the exact demo document.
+    //
+    //   words: array of {text, x, y, w, h} in pixel space, in reading order.
+    //   quote: the string to locate.
+    //
+    // Tokens normalize by lowercasing and stripping non-alphanumerics; tokens
+    // that normalize to empty (punctuation-only) are dropped from both the quote
+    // and the page. The quote's normalized token sequence is matched as a
+    // contiguous subsequence of the page's non-empty word tokens (first match
+    // wins). The matched run is grouped into lines (consecutive words share a
+    // line iff their vertical ranges overlap) and each group returns its union
+    // box in reading order. Returns [] when there is no match or nothing to match.
+    function normalizeToken(tok) {
+        return String(tok).toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
+
+    function sameLine(a, b) {
+        return !(a.y + a.h <= b.y || b.y + b.h <= a.y);
+    }
+
+    function unionBox(group) {
+        var minX = group[0].x;
+        var minY = group[0].y;
+        var maxX = group[0].x + group[0].w;
+        var maxY = group[0].y + group[0].h;
+        group.forEach(function (w) {
+            if (w.x < minX) { minX = w.x; }
+            if (w.y < minY) { minY = w.y; }
+            if (w.x + w.w > maxX) { maxX = w.x + w.w; }
+            if (w.y + w.h > maxY) { maxY = w.y + w.h; }
+        });
+        return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+    }
+
+    function groupLines(matched) {
+        var boxes = [];
+        var group = [matched[0]];
+        for (var i = 1; i < matched.length; i++) {
+            if (sameLine(group[group.length - 1], matched[i])) {
+                group.push(matched[i]);
+            } else {
+                boxes.push(unionBox(group));
+                group = [matched[i]];
+            }
+        }
+        boxes.push(unionBox(group));
+        return boxes;
+    }
+
+    function locateCitationBoxes(words, quote) {
+        var quoteTokens = String(quote || '').split(/\s+/)
+            .map(normalizeToken)
+            .filter(function (t) { return t !== ''; });
+        if (!quoteTokens.length) {
+            return [];
+        }
+        if (!Array.isArray(words) || !words.length) {
+            return [];
+        }
+
+        // Keep only words whose text normalizes to a non-empty token, preserving
+        // order, so punctuation-only page words don't break contiguity.
+        var page = [];
+        words.forEach(function (w) {
+            var norm = normalizeToken(w.text);
+            if (norm !== '') {
+                page.push({ word: w, norm: norm });
+            }
+        });
+        if (!page.length) {
+            return [];
+        }
+
+        var n = quoteTokens.length;
+        for (var start = 0; start <= page.length - n; start++) {
+            var match = true;
+            for (var k = 0; k < n; k++) {
+                if (page[start + k].norm !== quoteTokens[k]) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) {
+                var matched = [];
+                for (var m = 0; m < n; m++) {
+                    matched.push(page[start + m].word);
+                }
+                return groupLines(matched);
+            }
+        }
+        return [];
+    }
+
     // Show a live status line ("Thinking..." by default) with a spinner beside it.
     function showThinking(note) {
         answer.textContent = '';
@@ -594,7 +692,7 @@
         // Render a validated LabFact / IntakeFact envelope as a small facts panel.
         // Built entirely with createElement + textContent, so no server- or
         // model-supplied value is ever interpreted as HTML.
-        function renderExtraction(data, documentId, isDuplicate, previewUrl) {
+        function renderExtraction(data, documentId, isDuplicate, preview) {
             if (!extractBox) {
                 return;
             }
@@ -642,21 +740,52 @@
                 }
             });
 
-            // Click-to-reveal citation source (T56e). ``data.citation_boxes`` is a
-            // PER-FIELD map ``{field: [ {x,y,w,h} ]}``. When the upload was an image
-            // we can preview and the map is a non-empty object with page dimensions,
-            // each cited fact gets a small "show source" control (not the whole row).
-            // Clicking it opens a MODAL overlay showing the document image with ONLY
-            // that fact's box(es); the close control, the backdrop, or re-clicking
-            // the active control dismisses it. The modal + overlay layer are built
-            // first so the dl's control handlers (attached below) can reference them.
-            var cites = data.citation_boxes;
-            var hasCites = previewUrl
-                && cites
-                && typeof cites === 'object'
-                && Object.keys(cites).length
-                && data.page_width
-                && data.page_height;
+            // Click-to-reveal citation source (T56e/T56h). ``boxesByField`` is a
+            // PER-FIELD map ``{field: [ {x,y,w,h} ]}`` driving the SAME modal UX
+            // from either of two geometry sources:
+            //  - PDF uploads: the render seam returns the page's OWN text-layer word
+            //    geometry (``preview.words``); each fact value is located CLIENT-SIDE
+            //    on the actually-rendered page, so it works for any uploaded PDF.
+            //  - image uploads: the /extract response's ``citation_boxes`` (server
+            //    demo geometry), with page dimensions from the same response.
+            // When present, each cited fact gets a small "show source" control (not
+            // the whole row). Clicking it opens a MODAL overlay showing the document
+            // image with ONLY that fact's box(es); the close control, the backdrop,
+            // or re-clicking the active control dismisses it. The modal + overlay
+            // layer are built first so the dl's control handlers can reference them.
+            var boxesByField = null;
+            var pageW = null;
+            var pageH = null;
+            var imgUrl = null;
+            if (preview && preview.words) {
+                // PDF: locate each fact value in the page's own text-layer words.
+                pageW = preview.page_width;
+                pageH = preview.page_height;
+                imgUrl = preview.url;
+                boxesByField = {};
+                keys.forEach(function (k) {
+                    var v = fact[k];
+                    if (typeof v === 'string' && v !== '') {
+                        var b = locateCitationBoxes(preview.words, String(v));
+                        if (b.length) {
+                            boxesByField[k] = b;
+                        }
+                    }
+                });
+            } else if (preview && data.citation_boxes && typeof data.citation_boxes === 'object') {
+                // Image: server-provided per-field demo geometry.
+                boxesByField = data.citation_boxes;
+                pageW = data.page_width;
+                pageH = data.page_height;
+                imgUrl = preview.url;
+            }
+
+            var hasCites = boxesByField
+                && typeof boxesByField === 'object'
+                && Object.keys(boxesByField).length
+                && pageW
+                && pageH
+                && imgUrl;
 
             var modal = null;
             var overlayLayer = null;
@@ -664,9 +793,9 @@
 
             function citedField(k) {
                 return hasCites
-                    && Object.prototype.hasOwnProperty.call(cites, k)
-                    && Array.isArray(cites[k])
-                    && cites[k].length;
+                    && Object.prototype.hasOwnProperty.call(boxesByField, k)
+                    && Array.isArray(boxesByField[k])
+                    && boxesByField[k].length;
             }
 
             function clearOverlay() {
@@ -677,14 +806,14 @@
 
             function drawField(k) {
                 clearOverlay();
-                cites[k].forEach(function (box) {
+                boxesByField[k].forEach(function (box) {
                     var boxEl = document.createElement('div');
                     boxEl.className = 'oe-ai-agent-citation-box';
                     boxEl.style.position = 'absolute';
-                    boxEl.style.left = (box.x / data.page_width * 100) + '%';
-                    boxEl.style.top = (box.y / data.page_height * 100) + '%';
-                    boxEl.style.width = (box.w / data.page_width * 100) + '%';
-                    boxEl.style.height = (box.h / data.page_height * 100) + '%';
+                    boxEl.style.left = (box.x / pageW * 100) + '%';
+                    boxEl.style.top = (box.y / pageH * 100) + '%';
+                    boxEl.style.width = (box.w / pageW * 100) + '%';
+                    boxEl.style.height = (box.h / pageH * 100) + '%';
                     boxEl.style.border = '2px solid #d9534f';
                     boxEl.style.background = 'rgba(217,83,79,0.12)';
                     overlayLayer.appendChild(boxEl);
@@ -757,7 +886,7 @@
 
                 var img = document.createElement('img');
                 img.className = 'oe-ai-agent-doc-image';
-                img.setAttribute('src', previewUrl);
+                img.setAttribute('src', imgUrl);
                 img.style.width = '100%';
                 img.style.display = 'block';
                 frame.appendChild(img);
@@ -894,22 +1023,27 @@
             extractBox.appendChild(panel);
         }
 
-        // Resolve a preview URL for the source-citation modal, asynchronously.
-        // Images get an object URL directly. PDFs cannot render as an <img>, so
-        // they are routed through the optional ``window.OE_AI_AGENT_PDF_RENDER``
-        // seam (a pdf.js glue script, loaded separately) which returns a
-        // Promise<string> data URL of page 1; when that hook is absent, or any
-        // other file type is uploaded, there is no preview. The widget itself
-        // never imports pdf.js — it only consults the hook — so it stays
+        // Resolve a normalized preview DESCRIPTOR for the source-citation modal,
+        // asynchronously: ``{url, words, page_width, page_height}`` (or null).
+        // Images get an object URL directly and carry no words (their geometry is
+        // server-provided ``citation_boxes``): ``{url, words: null}``. PDFs cannot
+        // render as an <img>, so they are routed through the optional
+        // ``window.OE_AI_AGENT_PDF_RENDER`` seam (a pdf.js glue script, loaded
+        // separately) which resolves to ``{url, words, page_width, page_height}``
+        // — a page-1 raster PLUS the page's own text-layer word geometry, so the
+        // widget can locate each fact value client-side. When that hook is absent,
+        // or any other file type is uploaded, there is no preview. The widget
+        // itself never imports pdf.js — it only consults the hook — so it stays
         // jsdom-testable. Always resolves (null on any failure or unsupported type).
         function resolvePreview(file) {
             if (!file || !file.type) {
                 return Promise.resolve(null);
             }
             if (file.type.indexOf('image/') === 0) {
-                return Promise.resolve(
-                    (window.URL && URL.createObjectURL) ? URL.createObjectURL(file) : null
-                );
+                if (!(window.URL && URL.createObjectURL)) {
+                    return Promise.resolve(null);
+                }
+                return Promise.resolve({ url: URL.createObjectURL(file), words: null });
             }
             if (file.type === 'application/pdf') {
                 if (typeof window.OE_AI_AGENT_PDF_RENDER === 'function') {
@@ -956,11 +1090,12 @@
                     setExtractNote('Stored, but automatic extraction did not produce a valid result.', false);
                     return;
                 }
-                // Resolve the preview (image object URL, or a PDF rendered via the
-                // seam) asynchronously, then render the facts panel with it so the
-                // [show source] modal has an image to draw citation boxes over.
-                resolvePreview(file).then(function (url) {
-                    renderExtraction(result.body, documentId, isDuplicate, url);
+                // Resolve the preview DESCRIPTOR (image object URL, or a PDF page
+                // raster + text-layer words via the seam) asynchronously, then
+                // render the facts panel with it so the [show source] modal has an
+                // image to draw citation boxes over.
+                resolvePreview(file).then(function (preview) {
+                    renderExtraction(result.body, documentId, isDuplicate, preview);
                     // Record the file only now that a real facts panel is on screen,
                     // so a note/failure path leaves nothing to archive on next upload.
                     extractedFileName = fileName || null;
