@@ -1,7 +1,7 @@
 ---
 id: 53c
 title: IntakeFact persister — split narrative fields → meds/allergies/conditions/note
-status: todo
+status: ready-for-merge
 depends_on: [53a]
 branch: ticket/53c-intake-fact-persister
 base_branch: main
@@ -45,18 +45,18 @@ pnotes.activity=0. Then insert the new line-items and `record()` a provenance ro
 pid→uuid. Clinician id + pid passed in from the T53d endpoint.
 
 ## Acceptance criteria
-- [ ] `NarrativeFieldSplitter` splits on `;` and newlines, trims, drops empty and
+- [x] `NarrativeFieldSplitter` splits on `;` and newlines, trims, drops empty and
   negation sentinels ("none", "no known drug allergies", "NKDA", "—"), and is
   unit-tested across representative intake strings.
-- [ ] current_medications line-items become active `prescriptions` rows;
+- [x] current_medications line-items become active `prescriptions` rows;
   allergies become `lists` type='allergy'; family_history becomes `lists`
   type='medical_problem'; chief_concern becomes one note/observation.
-- [ ] demographics is never written.
-- [ ] Each written record gets a provenance row with the correct fact_type +
+- [x] demographics is never written.
+- [x] Each written record gets a provenance row with the correct fact_type +
   target_table; re-filing supersedes the prior run per fact_type (old records
   deactivated, new active), no duplicates.
-- [ ] Services requiring puuid receive a correctly resolved patient uuid.
-- [ ] DB-backed test proves each mapping + supersede; no services-suite regression.
+- [x] Services requiring puuid receive a correctly resolved patient uuid.
+- [x] DB-backed test proves each mapping + supersede; no services-suite regression.
 
 ## Test plan (orchestrator authors these)
 - unit: `NarrativeFieldSplitter` cases (multi-med, negations, blanks, ragged
