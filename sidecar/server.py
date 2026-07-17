@@ -57,7 +57,7 @@ AgentBuilder = Callable[[int, str], Any]
 ExtractFn = Callable[[int, str, int, str], dict[str, Any]]
 
 # The closed set of document types the extractor understands (mirrors upload.php).
-_DOC_TYPES = ("lab_pdf", "intake_form")
+_DOC_TYPES = ("lab_pdf", "intake_form", "med_list")
 
 # Default Claude model for both the agent loop and the document extractor. The
 # deployment can override it (e.g. a faster tier) via OE_AI_AGENT_MODEL without a

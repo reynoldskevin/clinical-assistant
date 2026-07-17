@@ -1,7 +1,7 @@
 ---
 id: 075a
 title: Sidecar med_list — third document type, strict-schema extraction
-status: tests-authored
+status: ready-for-merge
 depends_on: []
 branch: ticket/75a-medlist-sidecar-extract
 base_branch: main

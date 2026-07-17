@@ -23,7 +23,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from contracts import ExtractionEnvelope, IntakeFact, LabFact
+from contracts import ExtractionEnvelope, IntakeFact, LabFact, MedicationListFact
 
 # A scan whose reported confidence falls BELOW this threshold is flagged
 # ``low_confidence`` — a degraded / rotated / noisy document the VLM was unsure
@@ -31,9 +31,10 @@ from contracts import ExtractionEnvelope, IntakeFact, LabFact
 LOW_CONFIDENCE_THRESHOLD: float = 0.5
 
 # doc_type -> (contract model, human-readable label for the extraction prompt)
-_CONTRACTS: dict[str, type[LabFact] | type[IntakeFact]] = {
+_CONTRACTS: dict[str, type[LabFact] | type[IntakeFact] | type[MedicationListFact]] = {
     "lab_pdf": LabFact,
     "intake_form": IntakeFact,
+    "med_list": MedicationListFact,
 }
 
 # The fields the VLM must return for each contract, embedded in the prompt so the
@@ -48,6 +49,12 @@ _DOC_INSTRUCTIONS: dict[str, str] = {
         "This is a patient intake form. Extract these fields: demographics, "
         "chief_concern, current_medications, allergies, family_history, "
         "source_citation."
+    ),
+    "med_list": (
+        "This is a medication list. Extract the patient's current medications as "
+        "ONE human-readable string, one medication per entry separated by '; ', "
+        "each formatted 'drug dose route frequency' (omit any part not present in "
+        "the document). Extract these fields: medications, source_citation."
     ),
 }
 
@@ -96,7 +103,7 @@ class ExtractionResult:
     confidence: float
     low_confidence: bool
     unsupported_fields: list[str]
-    fact: LabFact | IntakeFact
+    fact: LabFact | IntakeFact | MedicationListFact
 
     def telemetry(self) -> dict[str, Any]:
         """Return a PHI-free, log-safe summary of this extraction.
