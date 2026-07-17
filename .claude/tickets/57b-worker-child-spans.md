@@ -1,7 +1,7 @@
 ---
 id: 057b
 title: Distributed tracing — supervisor → worker child spans
-status: ready-for-merge
+status: done
 depends_on: [057a]
 branch: ticket/57b-worker-child-spans
 base_branch: ticket/57a-structured-events

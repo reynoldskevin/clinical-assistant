@@ -1,7 +1,7 @@
 ---
 id: 057a
 title: Week-2 structured log events (event spine + emission wiring)
-status: ready-for-merge
+status: done
 depends_on: []
 branch: ticket/57a-structured-events
 base_branch: main
