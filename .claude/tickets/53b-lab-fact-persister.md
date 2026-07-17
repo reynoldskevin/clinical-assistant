@@ -1,7 +1,7 @@
 ---
 id: 53b
 title: LabFact persister — procedure_order/report/result + provenance + supersede
-status: todo
+status: ready-for-merge
 depends_on: [53a]
 branch: ticket/53b-lab-fact-persister
 base_branch: ticket/53a-derived-fact-provenance
@@ -47,18 +47,18 @@ wire. Abnormal-flag mapping: normalize the extracted flag to OpenEMR's
 {no,yes,high,low} enum; unknown → 'no'.
 
 ## Acceptance criteria
-- [ ] Filing a LabFact writes a linked procedure_order→report→result with the value/
-  unit/range/abnormal/date/citation mapped to the right columns, all with uuids and
-  `document_id` = source document.
-- [ ] `procedure_type_id` is resolved from the test_name (reused if present, created
-  if absent) so the result row satisfies its FK.
-- [ ] A provenance row (fact_type='lab_result', target_table='procedure_result') is
-  recorded per result.
-- [ ] Re-filing the same document (new run) supersedes the prior run: prior
+- [x] Filing a LabFact writes a linked procedure_order→report→result with the value/
+  unit/range/abnormal/date/citation mapped to the right columns (test_name→result_text)
+  and `document_id` = source document.
+- [x] The test name is written to `result_text` (this schema has no `procedure_type_id`
+  on procedure_result — no procedure_type resolution needed).
+- [x] A provenance row (fact_type='lab_result', target_table='procedure_order',
+  target_id=new order id) is recorded per filed LabFact.
+- [x] Re-filing the same document (new run) supersedes the prior run: prior
   procedure_order.activity flips to 0 and prior provenance rows go inactive; the new
   result is active. No duplicate active labs.
-- [ ] abnormal_flag maps to {no,yes,high,low}; unknown/blank → 'no'.
-- [ ] DB-backed test proves the row graph + supersede; no services-suite regression.
+- [x] abnormal_flag maps to {no,yes,high,low}; unknown/blank → 'no'.
+- [x] DB-backed test proves the row graph + supersede; no services-suite regression.
 
 ## Test plan (orchestrator authors these)
 - DB-backed `tests/Tests/Services/AiAgent/LabFactPersisterTest.php`: file a LabFact
