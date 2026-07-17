@@ -204,6 +204,24 @@ final class IntakeFactPersisterTest extends TestCase
         $this->assertSame(7, $this->countRows('SELECT COUNT(*) c FROM ai_derived_fact WHERE active = 1'));
     }
 
+    public function testRefileRemovesPriorAllergiesAndProblemsFromTheChart(): void
+    {
+        // The native OpenEMR Issues panel (stats.php) filters on enddate, NOT
+        // activity, so a soft-deactivated superseded allergy/problem would still
+        // display as a duplicate. Re-filing must REMOVE the prior run's agent-created
+        // list rows (we only ever touch rows tracked in our own provenance).
+        $p = $this->persister();
+        $p->persist(1, 42, 'run-1', 7, $this->fact(['allergies' => 'Penicillin', 'family_history' => 'Father: MI']));
+        $p->persist(1, 42, 'run-2', 7, $this->fact(['allergies' => 'Sulfa', 'family_history' => 'Mother: diabetes']));
+
+        // Only the new run's rows survive in lists — no ghost duplicate.
+        $this->assertSame(1, $this->countRows("SELECT COUNT(*) c FROM lists WHERE type = 'allergy'"));
+        $this->assertSame('Sulfa', $this->db->query("SELECT title FROM lists WHERE type = 'allergy'")->fetch()['title']);
+        $this->assertSame(1, $this->countRows("SELECT COUNT(*) c FROM lists WHERE type = 'medical_problem'"));
+        // Audit history is still preserved in provenance (the prior run is superseded).
+        $this->assertSame(2, $this->countRows("SELECT COUNT(*) c FROM ai_derived_fact WHERE target_table = 'lists' AND active = 0"));
+    }
+
     public function testChiefConcernNoteStoresUsernameNotNumericId(): void
     {
         // OpenEMR's addPnote stores the USERNAME in pnotes.user, and the Patient

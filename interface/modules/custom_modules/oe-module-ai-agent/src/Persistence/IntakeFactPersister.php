@@ -261,24 +261,35 @@ final class IntakeFactPersister
     }
 
     /**
-     * Supersede the prior run for one fact_type and soft-deactivate each returned
-     * clinical record. Returns the number of records deactivated.
+     * Supersede the prior run for one fact_type and retire each returned clinical
+     * record so it no longer shows in the chart. Returns the number retired.
      */
     private function supersede(int $pid, int $documentId, string $factType): int
     {
         $refs = $this->provenance->supersedePriorRun($pid, $documentId, $factType);
         foreach ($refs as $ref) {
-            $this->deactivate($ref);
+            $this->retirePriorRecord($ref);
         }
 
         return count($refs);
     }
 
-    private function deactivate(DerivedFactRef $ref): void
+    /**
+     * Retire a superseded, agent-created record. The mechanism differs by table
+     * because OpenEMR's native panels filter differently:
+     *  - the Prescriptions panel and the pnotes/Messages views honor active/activity,
+     *    so a soft flag (=0) hides a superseded row;
+     *  - the native Issues panel (interface/patient_file/summary/stats.php) filters on
+     *    `enddate`, NOT `activity`, so a soft-flagged `lists` row would still display
+     *    as a duplicate — it must be DELETED.
+     * We only ever touch rows the agent itself created (the provenance target id),
+     * never a clinician's own records; the superseded provenance row preserves history.
+     */
+    private function retirePriorRecord(DerivedFactRef $ref): void
     {
         $sql = match ($ref->targetTable) {
             'prescriptions' => 'UPDATE prescriptions SET active = 0 WHERE id = ?',
-            'lists' => 'UPDATE lists SET activity = 0 WHERE id = ?',
+            'lists' => 'DELETE FROM lists WHERE id = ?',
             'pnotes' => 'UPDATE pnotes SET activity = 0 WHERE id = ?',
             default => null,
         };
