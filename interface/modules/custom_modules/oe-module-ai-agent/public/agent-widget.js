@@ -594,7 +594,7 @@
         // Render a validated LabFact / IntakeFact envelope as a small facts panel.
         // Built entirely with createElement + textContent, so no server- or
         // model-supplied value is ever interpreted as HTML.
-        function renderExtraction(data, documentId, isDuplicate) {
+        function renderExtraction(data, documentId, isDuplicate, previewUrl) {
             if (!extractBox) {
                 return;
             }
@@ -655,6 +655,45 @@
                 dl.appendChild(dd);
             });
             panel.appendChild(dl);
+
+            // Citation bounding-box overlay: when the extract response carries
+            // page-pixel citation boxes (the T56a contract) AND the upload was an
+            // image we can preview, render the document image with one absolutely-
+            // positioned box per citation. Boxes are placed as percentages of the
+            // page so they scale with the rendered image. Built with createElement
+            // only — no innerHTML — so nothing is interpreted as HTML.
+            if (previewUrl
+                && Array.isArray(data.citation_boxes)
+                && data.citation_boxes.length
+                && data.page_width
+                && data.page_height) {
+                var overlay = document.createElement('div');
+                overlay.style.position = 'relative';
+                overlay.style.marginTop = '0.5em';
+                overlay.style.maxWidth = '360px';
+
+                var img = document.createElement('img');
+                img.className = 'oe-ai-agent-doc-image';
+                img.setAttribute('src', previewUrl);
+                img.style.width = '100%';
+                img.style.display = 'block';
+                overlay.appendChild(img);
+
+                data.citation_boxes.forEach(function (box) {
+                    var boxEl = document.createElement('div');
+                    boxEl.className = 'oe-ai-agent-citation-box';
+                    boxEl.style.position = 'absolute';
+                    boxEl.style.left = (box.x / data.page_width * 100) + '%';
+                    boxEl.style.top = (box.y / data.page_height * 100) + '%';
+                    boxEl.style.width = (box.w / data.page_width * 100) + '%';
+                    boxEl.style.height = (box.h / data.page_height * 100) + '%';
+                    boxEl.style.border = '2px solid #d9534f';
+                    boxEl.style.background = 'rgba(217,83,79,0.12)';
+                    overlay.appendChild(boxEl);
+                });
+
+                panel.appendChild(overlay);
+            }
 
             var unsupported = data.unsupported_fields || [];
             if (unsupported.length) {
@@ -740,7 +779,7 @@
         // to extract strict facts from the freshly-uploaded document. The pid is
         // sent from the card (as /ask does); the boundary re-checks the token
         // scope on the document read, so it can only reach the patient in context.
-        function extractDocument(documentId, docType, fileName, isDuplicate) {
+        function extractDocument(documentId, docType, fileName, isDuplicate, previewUrl) {
             if (!extractBox || !documentId) {
                 return;
             }
@@ -770,7 +809,7 @@
                     setExtractNote('Stored, but automatic extraction did not produce a valid result.', false);
                     return;
                 }
-                renderExtraction(result.body, documentId, isDuplicate);
+                renderExtraction(result.body, documentId, isDuplicate, previewUrl);
                 // Record the file only now that a real facts panel is on screen,
                 // so a note/failure path leaves nothing to archive on next upload.
                 extractedFileName = fileName || null;
@@ -791,6 +830,13 @@
             // and any archived extraction is keyed by the right name.
             var docType = docTypeSelect.value;
             var fileName = file.name;
+            // For IMAGE uploads only, mint an object URL to preview the document
+            // and draw citation boxes over it. Non-image files (e.g. PDFs) get no
+            // preview, so createObjectURL is never called for them. Captured now,
+            // before reset() clears the form.
+            var previewUrl = (file.type && file.type.indexOf('image/') === 0 && window.URL && URL.createObjectURL)
+                ? URL.createObjectURL(file)
+                : null;
             var payload = new FormData();
             payload.append('csrf_token', csrfToken);
             payload.append('doc_type', docType);
@@ -842,7 +888,7 @@
                 }
                 uploadForm.reset();
                 // Auto-extract strict facts from the stored document (existing or new).
-                extractDocument(data.id, docType, fileName, data.duplicate === true);
+                extractDocument(data.id, docType, fileName, data.duplicate === true, previewUrl);
             }).catch(function () {
                 setStatus('Upload failed. Please try again.', false);
             }).finally(function () {
