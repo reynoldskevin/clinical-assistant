@@ -178,6 +178,36 @@ _DEGRADED_NOTICE = (
 )
 
 
+def build_citation_sources(
+    citations: list[dict[str, Any]],
+    retrieved_data: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Map each ``[Sn]`` marker to a compact, renderable view of its source.
+
+    Pure and side-effect-free. For each ``{"n": int, "ref": str}`` entry, the
+    ref's backing record is resolved via :meth:`ClaudeAgent._citation_for`;
+    markers whose ref has no backing record are omitted. The surviving markers
+    are keyed by ``str(n)`` with a ``{ref, type, section, text}`` view:
+    guideline refs -> ``type="guideline"`` (text = snippet, section = citation
+    title); chart refs -> ``type="record"`` (text = drug/title/value).
+    """
+    sources: dict[str, dict[str, Any]] = {}
+    for citation in citations:
+        if not (isinstance(citation, dict) and "n" in citation and "ref" in citation):
+            continue
+        ref = citation["ref"]
+        cit = ClaudeAgent._citation_for(ref, retrieved_data)
+        if cit is None:
+            continue
+        sources[str(citation["n"])] = {
+            "ref": ref,
+            "type": cit["source_type"],
+            "section": cit["page_or_section"],
+            "text": cit["quote_or_value"],
+        }
+    return sources
+
+
 class ClaudeAgent:
     """Runs a bounded, manual tool-use loop against an injected message-creator."""
 
@@ -204,6 +234,11 @@ class ClaudeAgent:
         # tools have run, the loop stops offering tools and forces a final
         # text answer from whatever the model has already gathered.
         self._max_tool_calls = max_tool_calls
+        # Per-marker source map populated on every compose (see
+        # :meth:`_apply_citation_split`). Keys are ``str(n)`` for the surviving
+        # ``[Sn]`` markers; values are ``{ref, type, section, text}`` views for
+        # the card to reveal a marker's source on click.
+        self.citation_sources: dict[str, dict[str, Any]] = {}
 
     @property
     def observer(self) -> Any:
@@ -321,6 +356,13 @@ class ClaudeAgent:
             if isinstance(c, dict) and "n" in c and "ref" in c
         }
         surviving = {n: ref for n, ref in by_number.items() if ref in valid_refs}
+
+        # Expose the grounded markers' sources for the card, on every compose
+        # path (including the record-only early return below).
+        self.citation_sources = build_citation_sources(
+            [{"n": n, "ref": ref} for n, ref in surviving.items()],
+            retrieved_data,
+        )
 
         has_guideline = any(
             ref.startswith("guideline:") for ref in surviving.values()

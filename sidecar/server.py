@@ -302,7 +302,11 @@ def process_ask(
     trace = json.dumps(summarize()) if callable(summarize) else "null"
     logging.getLogger("sidecar").info("agent turn: cid=%s pid=%s trace=%s", cid, pid, trace)
 
-    return 200, {"answer": answer, "correlation_id": cid}
+    body: dict[str, Any] = {"answer": answer, "correlation_id": cid}
+    citation_sources = getattr(agent, "citation_sources", None)
+    if isinstance(citation_sources, dict) and citation_sources:
+        body["citations"] = citation_sources
+    return 200, body
 
 
 def _sse_frame(name: str, data: dict[str, Any]) -> bytes:
@@ -441,7 +445,11 @@ def stream_ask(
     logging.getLogger("sidecar").info("agent turn: cid=%s pid=%s trace=%s", cid, pid, trace)
 
     yield _sse_frame("answer", {"answer": answer})
-    yield _sse_frame("done", {"ok": True, "correlation_id": cid})
+    done: dict[str, Any] = {"ok": True, "correlation_id": cid}
+    citation_sources = getattr(result.get("agent"), "citation_sources", None)
+    if isinstance(citation_sources, dict) and citation_sources:
+        done["citations"] = citation_sources
+    yield _sse_frame("done", done)
 
 
 def default_agent_builder(
