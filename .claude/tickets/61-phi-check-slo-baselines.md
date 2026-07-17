@@ -1,13 +1,13 @@
 ---
 id: 061
 title: Finalize W2_ARCHITECTURE.md + PHI-detection CI check + SLO/baseline numbers
-status: tests-authored
+status: ready-for-merge
 depends_on: []
 branch: ticket/61-phi-check-slo-baselines
 base_branch: main
 test_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests/test_phi_detection.py tests/test_architecture_doc.py -q"
 full_suite_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests -q"
-attempts: 0
+attempts: 1
 ---
 
 ## Description
