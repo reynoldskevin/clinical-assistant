@@ -41,6 +41,7 @@ from observability import TraceCollector
 from retrieval import build_evidence_retriever_tool, get_guideline_index
 from extractor import attach_and_extract
 from bbox import locate_citation_boxes
+from demo_bbox import intake_demo_geometry
 from identity_check import check_identity
 from events import INGESTION_COMPLETE, INGESTION_START, log_event
 
@@ -638,14 +639,18 @@ def default_extract_builder(
                 )
 
         # Optional citation overlay: when a word-geometry provider is wired,
-        # locate the fact's source citation on the page and carry the covering
-        # box(es) + page dimensions back for the card to draw.
+        # locate every non-empty grounded fact VALUE on the page (comprehensive
+        # provenance) and carry the covering box(es) + page dimensions back for
+        # the card to draw. Value strings (not just the single source citation)
+        # so the overlay highlights each extracted value.
         if word_geometry is not None:
             geom = word_geometry(pid, document_id, doc_type)
             if geom:
-                body["citation_boxes"] = locate_citation_boxes(
-                    geom["words"], result.fact.source_citation
-                )
+                boxes: list[dict[str, int]] = []
+                for value in result.fact.model_dump().values():
+                    if isinstance(value, str) and value.strip():
+                        boxes.extend(locate_citation_boxes(geom["words"], value))
+                body["citation_boxes"] = boxes
                 body["page_width"] = geom["page_width"]
                 body["page_height"] = geom["page_height"]
 
@@ -822,7 +827,9 @@ def main() -> None:
         allow_origin,
         store,
         tracer,
-        default_extract_builder(summary_url, message_creator, read_url),
+        default_extract_builder(
+            summary_url, message_creator, read_url, word_geometry=intake_demo_geometry
+        ),
     )
     server = ThreadingHTTPServer((host, port), handler)
     print(f"AI sidecar listening on http://{host}:{port}/ask -> {summary_url}", flush=True)
