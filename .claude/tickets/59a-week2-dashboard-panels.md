@@ -1,7 +1,7 @@
 ---
 id: 059a
 title: Week-2 dashboard panels — event + per-category eval aggregation
-status: ready-for-merge
+status: done
 depends_on: []
 branch: ticket/59a-week2-dashboard-panels
 base_branch: main

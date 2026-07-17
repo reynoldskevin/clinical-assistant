@@ -1,7 +1,7 @@
 ---
 id: 059b
 title: Week-2 alerts + per-category eval-regression + runbooks
-status: ready-for-merge
+status: done
 depends_on: [059a]
 branch: ticket/59b-week2-alerts-runbooks
 base_branch: ticket/59a-week2-dashboard-panels
