@@ -142,6 +142,7 @@ try {
         $docType,
         $fact,
         $clinicianId,
+        $clinicianUsername,
     );
 } catch (\DomainException $e) {
     // An unsupported doc_type slipped past validation — generic 400, no detail.

@@ -203,4 +203,18 @@ final class IntakeFactPersisterTest extends TestCase
         // 3 meds + 1 allergy + 2 problems + 1 note = 7 provenance rows; demographics wrote nothing extra.
         $this->assertSame(7, $this->countRows('SELECT COUNT(*) c FROM ai_derived_fact WHERE active = 1'));
     }
+
+    public function testChiefConcernNoteStoresUsernameNotNumericId(): void
+    {
+        // OpenEMR's addPnote stores the USERNAME in pnotes.user, and the Patient
+        // Notes view filters `pid != user`. If we stored the numeric clinician id
+        // and it coincided with the pid (e.g. admin=id 1 filing to pid 1), the note
+        // would be hidden. With a username supplied, pnotes.user must be the name.
+        $this->persister()->persist(1, 42, 'run-1', 1, $this->fact([
+            'chief_concern' => 'Chest tightness',
+        ]), 'admin');
+
+        $row = $this->db->query('SELECT user FROM pnotes')->fetch();
+        $this->assertSame('admin', $row['user']);
+    }
 }

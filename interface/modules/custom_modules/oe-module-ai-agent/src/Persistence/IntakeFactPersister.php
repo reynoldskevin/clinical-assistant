@@ -63,6 +63,7 @@ final class IntakeFactPersister
         string $extractionRunId,
         int $createdBy,
         array $fact,
+        ?string $createdByName = null,
     ): array {
         $medications = $this->splitter->split($this->field($fact, 'current_medications'));
         $allergies = $this->splitter->split($this->field($fact, 'allergies'));
@@ -106,6 +107,7 @@ final class IntakeFactPersister
             $createdBy,
             $chiefConcern,
             $superseded,
+            $createdByName,
         );
 
         return [
@@ -219,12 +221,21 @@ final class IntakeFactPersister
         int $createdBy,
         string $concern,
         int &$superseded,
+        ?string $createdByName = null,
     ): int {
         $superseded += $this->supersede($pid, $documentId, 'chief_concern');
 
         if ($concern === '') {
             return 0;
         }
+
+        // pnotes.user must hold the USERNAME (OpenEMR's addPnote convention): the
+        // Patient Notes view filters `pid != user`, so storing the numeric clinician
+        // id would hide the note whenever that id coincides with the pid. Fall back
+        // to the id only when no username is supplied (e.g. a direct/test call).
+        $author = ($createdByName !== null && $createdByName !== '')
+            ? $createdByName
+            : (string) $createdBy;
 
         $insert = $this->db->prepare(
             'INSERT INTO pnotes (pid, title, body, activity, date, deleted, user) '
@@ -233,7 +244,7 @@ final class IntakeFactPersister
         $insert->bindValue(1, $pid, \PDO::PARAM_INT);
         $insert->bindValue(2, 'AI intake: chief concern', \PDO::PARAM_STR);
         $insert->bindValue(3, $concern, \PDO::PARAM_STR);
-        $insert->bindValue(4, (string) $createdBy, \PDO::PARAM_STR);
+        $insert->bindValue(4, $author, \PDO::PARAM_STR);
         $insert->execute();
 
         $targetId = (int) $this->db->lastInsertId();

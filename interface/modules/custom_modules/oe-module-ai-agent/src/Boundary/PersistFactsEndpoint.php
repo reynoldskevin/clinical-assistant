@@ -53,6 +53,7 @@ final class PersistFactsEndpoint
         string $docType,
         array $fact,
         int $createdBy,
+        ?string $createdByName = null,
     ): array {
         // Reject an unknown doc_type before any write (fail closed).
         if ($docType !== 'lab_pdf' && $docType !== 'intake_form') {
@@ -67,7 +68,7 @@ final class PersistFactsEndpoint
             }
             $superseded = $result['superseded'];
         } else {
-            $result = $this->intake->persist($pid, $documentId, $extractionRunId, $createdBy, $fact);
+            $result = $this->intake->persist($pid, $documentId, $extractionRunId, $createdBy, $fact, $createdByName);
             $filed = [];
             foreach ($result['filed'] as $factType => $count) {
                 if ($count > 0) {
