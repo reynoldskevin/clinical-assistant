@@ -32,6 +32,57 @@
         return;
     }
 
+    // Q&A history: prior turns are archived as collapsible accordions stacked
+    // chronologically (oldest first) directly ABOVE the live answer area, rather
+    // than being discarded when a new question is asked or an upload starts.
+    var history = document.createElement('div');
+    history.className = 'oe-ai-agent-history';
+    if (answer.parentNode) {
+        answer.parentNode.insertBefore(history, answer);
+    }
+    // The question that produced whatever currently sits in the live answer area.
+    var currentQuestion = null;
+
+    // Move the live answer's rendered nodes into a collapsed accordion under its
+    // question, then leave the live area empty. No-op archive (just a clear) when
+    // there is no tracked question or no content.
+    function archiveTurn() {
+        var hasContent = answer.childNodes.length > 0 && (answer.textContent || '').trim() !== '';
+        if (currentQuestion && hasContent) {
+            var turn = document.createElement('div');
+            turn.className = 'oe-ai-agent-turn';
+
+            var heading = document.createElement('button');
+            heading.type = 'button';
+            heading.className = 'oe-ai-agent-turn-q';
+            heading.setAttribute('aria-expanded', 'false');
+            heading.textContent = currentQuestion;
+
+            var body = document.createElement('div');
+            body.className = 'oe-ai-agent-turn-a';
+            body.setAttribute('hidden', '');
+            while (answer.firstChild) {
+                body.appendChild(answer.firstChild);
+            }
+
+            heading.addEventListener('click', function () {
+                var expanded = heading.getAttribute('aria-expanded') === 'true';
+                heading.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+                if (expanded) {
+                    body.setAttribute('hidden', '');
+                } else {
+                    body.removeAttribute('hidden');
+                }
+            });
+
+            turn.appendChild(heading);
+            turn.appendChild(body);
+            history.appendChild(turn);
+        }
+        answer.textContent = '';
+        currentQuestion = null;
+    }
+
     // Endpoints. The token endpoint is co-located with this script; the sidecar
     // URL is configurable via a data-attribute so deployments can point it at
     // their own boundary service.
@@ -76,7 +127,15 @@
             // Once the upload status has content, it takes the label's place:
             // hide the adjacent "Upload a document" label so the message sits
             // directly against the doc-type dropdown.
-            + '.oe-ai-agent-upload-status:not(:empty)+.oe-ai-agent-upload-label{display:none}';
+            + '.oe-ai-agent-upload-status:not(:empty)+.oe-ai-agent-upload-label{display:none}'
+            // Q&A history accordions: prior turns stacked above the live answer.
+            + '.oe-ai-agent-history{margin-bottom:0.75em}'
+            + '.oe-ai-agent-turn{border:1px solid #d0d0d0;border-radius:4px;margin-bottom:0.35em}'
+            + '.oe-ai-agent-turn-q{display:block;width:100%;text-align:left;background:#f4f6f8;'
+            + 'border:0;padding:6px 10px;font-weight:bold;cursor:pointer;border-radius:4px}'
+            + '.oe-ai-agent-turn-q[aria-expanded="true"]{border-bottom:1px solid #d0d0d0;'
+            + 'border-radius:4px 4px 0 0}'
+            + '.oe-ai-agent-turn-a{padding:6px 10px}';
         (document.head || document.documentElement).appendChild(style);
     })();
 
@@ -372,6 +431,12 @@
 
     form.addEventListener('submit', function (evt) {
         evt.preventDefault();
+        // Ignore new questions while a turn is in flight ("thinking"): the Ask
+        // button is disabled during that window, and this guard makes the block
+        // apply to Enter and any programmatic submit too, not just a button click.
+        if (submit && submit.disabled) {
+            return;
+        }
         var text = (question.value || '').trim();
         if (text === '') {
             return;
@@ -380,6 +445,10 @@
         // back into view at the top of the page when a new question is asked.
         window.scrollTo({ top: 0, behavior: 'smooth' });
         setBusy(true);
+        // Archive the PRIOR turn (currentQuestion still holds the prior question),
+        // then track THIS question before the live area is repainted.
+        archiveTurn();
+        currentQuestion = text;
         showThinking();
         mintToken().then(function (jwt) {
             return askSidecar(jwt, text);
@@ -611,7 +680,7 @@
             // answer/response so a stale answer never lingers above the new
             // extraction. Only runs once a real upload starts (past the no-file
             // guard above).
-            answer.textContent = '';
+            archiveTurn();
             clearExtract();
 
             fetch(uploadUrl, {
@@ -662,6 +731,10 @@
     question.addEventListener('keydown', function (evt) {
         if (evt.key === 'Enter' && !evt.shiftKey) {
             evt.preventDefault();
+            // Don't submit while a turn is in flight ("thinking").
+            if (submit && submit.disabled) {
+                return;
+            }
             if (typeof form.requestSubmit === 'function') {
                 form.requestSubmit();
             } else {
