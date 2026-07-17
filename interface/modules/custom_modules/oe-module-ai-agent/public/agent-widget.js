@@ -894,11 +894,39 @@
             extractBox.appendChild(panel);
         }
 
+        // Resolve a preview URL for the source-citation modal, asynchronously.
+        // Images get an object URL directly. PDFs cannot render as an <img>, so
+        // they are routed through the optional ``window.OE_AI_AGENT_PDF_RENDER``
+        // seam (a pdf.js glue script, loaded separately) which returns a
+        // Promise<string> data URL of page 1; when that hook is absent, or any
+        // other file type is uploaded, there is no preview. The widget itself
+        // never imports pdf.js — it only consults the hook — so it stays
+        // jsdom-testable. Always resolves (null on any failure or unsupported type).
+        function resolvePreview(file) {
+            if (!file || !file.type) {
+                return Promise.resolve(null);
+            }
+            if (file.type.indexOf('image/') === 0) {
+                return Promise.resolve(
+                    (window.URL && URL.createObjectURL) ? URL.createObjectURL(file) : null
+                );
+            }
+            if (file.type === 'application/pdf') {
+                if (typeof window.OE_AI_AGENT_PDF_RENDER === 'function') {
+                    return Promise.resolve(window.OE_AI_AGENT_PDF_RENDER(file)).catch(function () {
+                        return null;
+                    });
+                }
+                return Promise.resolve(null);
+            }
+            return Promise.resolve(null);
+        }
+
         // After a successful store, mint a patient-scoped JWT and ask the sidecar
         // to extract strict facts from the freshly-uploaded document. The pid is
         // sent from the card (as /ask does); the boundary re-checks the token
         // scope on the document read, so it can only reach the patient in context.
-        function extractDocument(documentId, docType, fileName, isDuplicate, previewUrl) {
+        function extractDocument(documentId, docType, fileName, isDuplicate, file) {
             if (!extractBox || !documentId) {
                 return;
             }
@@ -928,10 +956,15 @@
                     setExtractNote('Stored, but automatic extraction did not produce a valid result.', false);
                     return;
                 }
-                renderExtraction(result.body, documentId, isDuplicate, previewUrl);
-                // Record the file only now that a real facts panel is on screen,
-                // so a note/failure path leaves nothing to archive on next upload.
-                extractedFileName = fileName || null;
+                // Resolve the preview (image object URL, or a PDF rendered via the
+                // seam) asynchronously, then render the facts panel with it so the
+                // [show source] modal has an image to draw citation boxes over.
+                resolvePreview(file).then(function (url) {
+                    renderExtraction(result.body, documentId, isDuplicate, url);
+                    // Record the file only now that a real facts panel is on screen,
+                    // so a note/failure path leaves nothing to archive on next upload.
+                    extractedFileName = fileName || null;
+                });
             }).catch(function () {
                 setExtractNote('Stored, but automatic extraction is unavailable right now.', false);
             });
@@ -949,13 +982,10 @@
             // and any archived extraction is keyed by the right name.
             var docType = docTypeSelect.value;
             var fileName = file.name;
-            // For IMAGE uploads only, mint an object URL to preview the document
-            // and draw citation boxes over it. Non-image files (e.g. PDFs) get no
-            // preview, so createObjectURL is never called for them. Captured now,
-            // before reset() clears the form.
-            var previewUrl = (file.type && file.type.indexOf('image/') === 0 && window.URL && URL.createObjectURL)
-                ? URL.createObjectURL(file)
-                : null;
+            // The File reference is captured here and stays valid after
+            // uploadForm.reset() clears the input, so the preview (image object
+            // URL, or a PDF rendered via the seam) is resolved asynchronously from
+            // it once extraction succeeds — see resolvePreview / extractDocument.
             var payload = new FormData();
             payload.append('csrf_token', csrfToken);
             payload.append('doc_type', docType);
@@ -1007,7 +1037,7 @@
                 }
                 uploadForm.reset();
                 // Auto-extract strict facts from the stored document (existing or new).
-                extractDocument(data.id, docType, fileName, data.duplicate === true, previewUrl);
+                extractDocument(data.id, docType, fileName, data.duplicate === true, file);
             }).catch(function () {
                 setStatus('Upload failed. Please try again.', false);
             }).finally(function () {
