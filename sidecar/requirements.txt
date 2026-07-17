@@ -11,3 +11,6 @@ cohere>=5
 # Multi-agent supervisor/worker runtime (T49 LangGraph graph). Its langchain-core
 # dependency comes transitively.
 langgraph>=1,<2
+# Optional dense vector backend: only used when QDRANT_URL is set (imported
+# lazily inside the default Qdrant adapter). CI runs without it.
+qdrant-client>=1.7

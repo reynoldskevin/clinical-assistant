@@ -1,13 +1,13 @@
 ---
 id: 058b
 title: Qdrant-backed VectorIndex + build_vector_index factory (lazy, degrading)
-status: todo
+status: ready-for-merge
 depends_on: [058a]
 branch: ticket/58b-qdrant-vector-index
 base_branch: ticket/58a-resilience-primitives
 test_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests/test_qdrant_index.py -q"
 full_suite_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests -q"
-attempts: 0
+attempts: 1
 ---
 
 ## Description
