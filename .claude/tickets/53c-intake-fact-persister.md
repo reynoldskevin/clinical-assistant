@@ -1,7 +1,7 @@
 ---
 id: 53c
 title: IntakeFact persister — split narrative fields → meds/allergies/conditions/note
-status: ready-for-merge
+status: done
 depends_on: [53a]
 branch: ticket/53c-intake-fact-persister
 base_branch: main

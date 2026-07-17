@@ -1,7 +1,7 @@
 ---
 id: 53b
 title: LabFact persister — procedure_order/report/result + provenance + supersede
-status: ready-for-merge
+status: done
 depends_on: [53a]
 branch: ticket/53b-lab-fact-persister
 base_branch: ticket/53a-derived-fact-provenance
