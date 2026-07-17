@@ -18,7 +18,10 @@
 
 # OpenEMR Agent Forge
 
-Deployed demo viewable [here](https://truthful-peace-production-62af.up.railway.app/)
+Deployed demo viewable [here](https://truthful-peace-production-62af.up.railway.app/)\
+Ready Status [here](https://ai-sidecar-production-c492.up.railway.app/ready)\
+Health Check [here](https://ai-sidecar-production-c492.up.railway.app/health)\
+Live Metrics Snapshot [here](https://ai-sidecar-production-c492.up.railway.app/metrics)
 
 ## Contents
 [Installation](#installation)\

@@ -38,6 +38,7 @@ POSTMAN_PATH = os.path.join(_HERE, "..", "..", "postman", "oe-ai-agent.postman_c
 EXPECTED_ENDPOINTS = {
     "/health": {"get"},
     "/ready": {"get"},
+    "/metrics": {"get"},
     "/ask": {"post"},
     "/ask/stream": {"post"},
     "/extract": {"post"},

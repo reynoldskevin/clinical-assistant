@@ -54,6 +54,19 @@
       }
     },
     {
+      "name": "Metrics (Week-2 snapshot)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{sidecar_base_url}}/metrics",
+          "host": ["{{sidecar_base_url}}"],
+          "path": ["metrics"]
+        },
+        "description": "On-demand Week-2 telemetry snapshot — dashboard panels (ingestion, extraction, retrieval, routing), the extraction-failure alert, and the event-buffer window. Unauthenticated like /health and /ready."
+      }
+    },
+    {
       "name": "1. Mint dev token",
       "request": {
         "method": "POST",
