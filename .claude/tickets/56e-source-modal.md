@@ -1,13 +1,13 @@
 ---
 id: 056e
 title: Citation source — small [show source] control + modal overlay
-status: tests-authored
+status: ready-for-merge
 depends_on: [056d]
 branch: ticket/56e-source-modal
 base_branch: ticket/56d-click-to-reveal-citation
 test_command: "npx jest interface/modules/custom_modules/oe-module-ai-agent/tests/agent-widget-bbox.test.js"
 full_suite_command: "npx jest interface/modules/custom_modules/oe-module-ai-agent"
-attempts: 0
+attempts: 1
 ---
 
 ## Description
