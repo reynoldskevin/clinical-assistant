@@ -1,13 +1,13 @@
 ---
 id: 058a
 title: Resilience primitives — circuit breaker + timeout/retry wrapper
-status: todo
+status: ready-for-merge
 depends_on: []
 branch: ticket/58a-resilience-primitives
 base_branch: main
 test_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests/test_resilience.py -q"
 full_suite_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests -q"
-attempts: 0
+attempts: 1
 ---
 
 ## Description
