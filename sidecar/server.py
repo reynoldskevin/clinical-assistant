@@ -41,6 +41,7 @@ from observability import TraceCollector
 from retrieval import build_evidence_retriever_tool, get_guideline_index
 from extractor import attach_and_extract
 from identity_check import check_identity
+from events import INGESTION_COMPLETE, INGESTION_START, log_event
 
 from pydantic import ValidationError
 
@@ -591,6 +592,7 @@ def default_extract_builder(
     def extract(pid: int, jwt: str, document_id: int, doc_type: str) -> dict[str, Any]:
         cid = new_correlation_id()
         chart_boundary = build_chart_boundary(chart_url, jwt, correlation_id=cid)
+        log_event(INGESTION_START, cid, document_id=document_id, doc_type=doc_type)
         result = attach_and_extract(
             pid,
             document_id,
@@ -611,6 +613,7 @@ def default_extract_builder(
             "fact": result.fact.model_dump(),
             "correlation_id": cid,
         }
+        log_event(INGESTION_COMPLETE, cid, document_id=document_id, doc_type=doc_type)
 
         # Proactive, deterministic wrong-chart / wrong-patient check at
         # extraction time (intake forms only). Best-effort and fail-open: any
