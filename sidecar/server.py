@@ -40,6 +40,7 @@ from factory import (
 from observability import TraceCollector
 from retrieval import build_evidence_retriever_tool, get_guideline_index
 from extractor import attach_and_extract
+from bbox import locate_citation_boxes
 from identity_check import check_identity
 from events import INGESTION_COMPLETE, INGESTION_START, log_event
 
@@ -577,6 +578,7 @@ def default_extract_builder(
     summary_url: str,
     message_creator: Any,
     read_url: str | None = None,
+    word_geometry: Any = None,
 ) -> ExtractFn:
     """Build the extract-fn: fetch the stored document pid-scoped and extract it.
 
@@ -634,6 +636,18 @@ def default_extract_builder(
                 logging.getLogger("sidecar").warning(
                     "identity check skipped pid=%s doc=%s", pid, document_id
                 )
+
+        # Optional citation overlay: when a word-geometry provider is wired,
+        # locate the fact's source citation on the page and carry the covering
+        # box(es) + page dimensions back for the card to draw.
+        if word_geometry is not None:
+            geom = word_geometry(pid, document_id, doc_type)
+            if geom:
+                body["citation_boxes"] = locate_citation_boxes(
+                    geom["words"], result.fact.source_citation
+                )
+                body["page_width"] = geom["page_width"]
+                body["page_height"] = geom["page_height"]
 
         return body
 
