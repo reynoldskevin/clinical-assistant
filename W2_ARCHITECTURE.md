@@ -243,9 +243,13 @@ correlation ID alone.
 estimate, retrieval hits, extraction confidence (aggregate, not values), and eval
 outcome — all PHI-free.
 
-**SLOs.** Document-ingestion p95 < target seconds; evidence-retrieval p95 <
-target. (Concrete targets set from the T44/T45 baseline run and recorded against
-`METRICS_WEEK1.md`.)
+**SLOs.** Grounded in the recorded Week-1 baselines (`METRICS_WEEK1.md`), with
+honest headroom above each captured p95: agent-turn (answer) p95 **< 15 s**
+(baseline p95 12.5 s); readiness (`/ready`, 3 dependency probes) p95 **< 1.5 s**
+(baseline p95 1.19 s); liveness (`/health`) p95 **< 10 ms** (baseline p95 4.0 ms).
+Document-ingestion and evidence-retrieval p95 targets are tracked by the same
+load-test harness against `METRICS_WEEK1.md` and set from the T44/T45 baseline
+run.
 
 **Resilience.** Every outbound LLM + retrieval call has a timeout, bounded retry,
 and a circuit breaker; a slow/absent dependency trips the breaker instead of

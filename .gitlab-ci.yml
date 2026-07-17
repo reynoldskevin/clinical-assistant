@@ -61,6 +61,19 @@ security:scan:
   script:
     - bandit -r sidecar -x sidecar/tests -ll
 
+# PHI-detection guard: a blocking, offline, no-secrets gate. Runs the
+# deterministic detector over the real Week-2 log/trace emission points and
+# fails the build if any direct patient identifier leaks. No live LLM, no
+# secrets — mirrors the security:deps / security:scan tier.
+security:phi:
+  stage: security
+  before_script:
+    - python -m pip install --upgrade pip
+    # Dev deps: pytest (runner) + PyYAML (the guard parses .gitlab-ci.yml).
+    - pip install -r sidecar/requirements-dev.txt
+  script:
+    - python -m pytest -c sidecar/pytest.ini sidecar/tests/test_phi_detection.py
+
 # Deterministic offline eval tests — the per-push BLOCKING gate. Runs on every
 # MR and branch push (and in schedule/tag/web pipelines too) and must pass to merge.
 eval:offline:
