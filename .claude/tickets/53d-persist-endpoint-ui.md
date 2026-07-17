@@ -1,7 +1,7 @@
 ---
 id: 53d
 title: Clinician-gated persist.php endpoint + "Accept & file to chart" card UI
-status: todo
+status: ready-for-merge
 depends_on: [53c]
 branch: ticket/53d-persist-endpoint-ui
 base_branch: main
@@ -32,17 +32,17 @@ PROPOSES extracted facts; the clinician COMMITS them. Mirrors upload.php's gate.
    All DOM via createElement/textContent (no innerHTML).
 
 ## Acceptance criteria
-- [ ] persist.php denies unauthenticated/invalid-CSRF/unauthorized/no-pid requests
+- [x] persist.php denies unauthenticated/invalid-CSRF/unauthorized/no-pid requests
   with safe 4xx and writes nothing; pid comes only from the session.
-- [ ] A valid lab request routes to LabFactPersister; a valid intake request to
+- [x] A valid lab request routes to LabFactPersister; a valid intake request to
   IntakeFactPersister; the response reports filed fact_types + counts + superseded.
-- [ ] Re-posting the same document supersedes rather than duplicates (delegated to
+- [x] Re-posting the same document supersedes rather than duplicates (delegated to
   the persisters).
-- [ ] The card shows an "Accept & file to chart" button on extracted facts, POSTs
+- [x] The card shows an "Accept & file to chart" button on extracted facts, POSTs
   the held envelope with the document id + extraction_run_id + csrf, disables while
   in flight, and shows a safe success/failure message; no innerHTML.
-- [ ] On a wrong-chart identity mismatch the file button is hidden by default.
-- [ ] No regression: module jest suite + services suite stay green.
+- [x] On a wrong-chart identity mismatch the file button is hidden by default.
+- [x] No regression: module jest suite + services suite stay green.
 
 ## Test plan (orchestrator authors these)
 - jsdom `tests/agent-widget-persist.test.js`: button present on facts panel; click
