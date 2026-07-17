@@ -55,7 +55,7 @@ function flushAll() {
 
 // Resolving fetch for the upload → extract flow. `identityMatches=false` makes the
 // extract response report a wrong-chart mismatch. Records all calls for assertions.
-function installFetch(identityMatches) {
+function installFetch(identityMatches, duplicate) {
     const calls = [];
     global.fetch = jest.fn(function (url, opts) {
         const u = String(url);
@@ -67,7 +67,7 @@ function installFetch(identityMatches) {
             return json({ token: 'jwt' });
         }
         if (u.indexOf('upload.php') !== -1) {
-            return json({ ok: true, id: 42, category: 'Patient Information' });
+            return json({ ok: true, id: 42, category: 'Patient Information', duplicate: duplicate === true });
         }
         if (u.indexOf('/extract') !== -1) {
             return json({
@@ -162,5 +162,24 @@ describe('agent-widget: Accept & file to chart', () => {
         // The wrong-chart warning renders, but no file-to-chart button is offered.
         expect(el('.oe-ai-agent-extract').textContent).toContain('Possible wrong-chart');
         expect(el('.oe-ai-agent-extract .oe-ai-agent-file-btn')).toBeNull();
+    });
+
+    test('an already-on-file (duplicate) upload disables the button with a clear label', async () => {
+        document.body.innerHTML = SCAFFOLD;
+        const calls = installFetch(true, true); // duplicate = true
+        loadWidget();
+
+        uploadNamed('already-here.png');
+        await flushAll();
+
+        const btn = el('.oe-ai-agent-extract .oe-ai-agent-file-btn');
+        expect(btn).not.toBeNull();
+        expect(btn.disabled).toBe(true);
+        expect(btn.textContent.toLowerCase()).toContain('cannot file an old upload');
+
+        // Clicking it does nothing — no persist request fires.
+        btn.dispatchEvent(new Event('click', { bubbles: true }));
+        await flushAll();
+        expect(calls.some(function (c) { return c.url.indexOf('persist.php') !== -1; })).toBe(false);
     });
 });

@@ -594,7 +594,7 @@
         // Render a validated LabFact / IntakeFact envelope as a small facts panel.
         // Built entirely with createElement + textContent, so no server- or
         // model-supplied value is ever interpreted as HTML.
-        function renderExtraction(data, documentId) {
+        function renderExtraction(data, documentId, isDuplicate) {
             if (!extractBox) {
                 return;
             }
@@ -673,6 +673,16 @@
                 var fileBtn = document.createElement('button');
                 fileBtn.type = 'button';
                 fileBtn.className = 'oe-ai-agent-file-btn';
+                // A duplicate ("already on file") upload is an OLD document — filing
+                // it could re-file stale facts, so the action is disabled with a
+                // clear label rather than offered.
+                if (isDuplicate) {
+                    fileBtn.textContent = 'Cannot file an old upload';
+                    fileBtn.disabled = true;
+                    panel.appendChild(fileBtn);
+                    extractBox.appendChild(panel);
+                    return;
+                }
                 fileBtn.textContent = 'Accept & file to chart';
                 fileBtn.addEventListener('click', function () {
                     fileBtn.disabled = true;
@@ -730,7 +740,7 @@
         // to extract strict facts from the freshly-uploaded document. The pid is
         // sent from the card (as /ask does); the boundary re-checks the token
         // scope on the document read, so it can only reach the patient in context.
-        function extractDocument(documentId, docType, fileName) {
+        function extractDocument(documentId, docType, fileName, isDuplicate) {
             if (!extractBox || !documentId) {
                 return;
             }
@@ -760,7 +770,7 @@
                     setExtractNote('Stored, but automatic extraction did not produce a valid result.', false);
                     return;
                 }
-                renderExtraction(result.body, documentId);
+                renderExtraction(result.body, documentId, isDuplicate);
                 // Record the file only now that a real facts panel is on screen,
                 // so a note/failure path leaves nothing to archive on next upload.
                 extractedFileName = fileName || null;
@@ -832,7 +842,7 @@
                 }
                 uploadForm.reset();
                 // Auto-extract strict facts from the stored document (existing or new).
-                extractDocument(data.id, docType, fileName);
+                extractDocument(data.id, docType, fileName, data.duplicate === true);
             }).catch(function () {
                 setStatus('Upload failed. Please try again.', false);
             }).finally(function () {
