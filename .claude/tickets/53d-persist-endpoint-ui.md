@@ -1,7 +1,7 @@
 ---
 id: 53d
 title: Clinician-gated persist.php endpoint + "Accept & file to chart" card UI
-status: ready-for-merge
+status: done
 depends_on: [53c]
 branch: ticket/53d-persist-endpoint-ui
 base_branch: main
