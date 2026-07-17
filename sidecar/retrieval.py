@@ -23,10 +23,12 @@ from __future__ import annotations
 import hashlib
 import math
 import os
+import time
 from dataclasses import dataclass, field
-from typing import Any, Optional, Protocol, runtime_checkable
+from typing import Any, Callable, Optional, Protocol, runtime_checkable
 
 from contracts import EvidenceQueryInput
+from resilience import CircuitBreaker, call_resilient
 
 # Absolute path to the committed guideline corpus (derived from this file).
 CORPUS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "corpus")
@@ -219,6 +221,202 @@ class InProcessVectorIndex:
         return scored[: max(0, k)]
 
 
+# --- Qdrant-backed vector index -----------------------------------------------
+
+# A fixed collection name for the production Qdrant deployment; the guideline
+# corpus lives here. Kept module-level so both the factory and any operational
+# tooling reference the same name.
+_QDRANT_COLLECTION = "guidelines"
+
+# Sensible resilience defaults for remote Qdrant calls (overridable per index).
+_QDRANT_TIMEOUT = 5.0
+_QDRANT_RETRIES = 2
+_QDRANT_FAIL_MAX = 5
+_QDRANT_RESET_TIMEOUT = 30.0
+
+
+@runtime_checkable
+class QdrantAdapter(Protocol):
+    """Thin two-method surface ``QdrantVectorIndex`` drives.
+
+    Isolates the index from the ``qdrant_client`` SDK: the default adapter (see
+    ``_DefaultQdrantAdapter``) wraps the real SDK lazily, while tests inject a
+    fake with the same shape.
+    """
+
+    def upsert(self, ids: list[int], vectors: list[list[float]]) -> None:
+        ...
+
+    def query(self, vector: list[float], k: int) -> list[tuple[int, float]]:
+        ...
+
+
+class QdrantVectorIndex:
+    """A dense nearest-neighbour index backed by a remote Qdrant service.
+
+    Satisfies the ``VectorIndex`` Protocol, mirroring ``InProcessVectorIndex``'s
+    ``add``/``search`` shape but forwarding to an injected ``QdrantAdapter``
+    (``upsert``/``query``). Every remote call is wrapped in ``call_resilient`` —
+    a per-call timeout, bounded retries, and a shared per-index
+    ``CircuitBreaker`` — so a dead Qdrant fails fast rather than forever.
+
+    Laziness (mirroring ``CohereEmbeddingClient``): construction imports no SDK
+    and opens no connection. The ``client_factory`` is invoked at most once, on
+    the first ``add``/``search``, and the resulting adapter is memoized. The
+    DEFAULT factory (when ``client_factory is None``) lazily builds the real
+    ``qdrant_client``-backed adapter, so importing this module never needs the
+    SDK.
+    """
+
+    def __init__(
+        self,
+        url: str,
+        collection: str,
+        dim: int,
+        *,
+        breaker: Optional[CircuitBreaker] = None,
+        client_factory: Optional[Callable[[], QdrantAdapter]] = None,
+        timeout: Optional[float] = _QDRANT_TIMEOUT,
+        retries: int = _QDRANT_RETRIES,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
+        self._url = url
+        self._collection = collection
+        self._dim = dim
+        self._timeout = timeout
+        self._retries = retries
+        self._clock = clock
+        self._sleep = sleep
+        # One shared breaker per index instance; default consults the injected
+        # clock so the whole path stays deterministic under test.
+        self._breaker = breaker or CircuitBreaker(
+            fail_max=_QDRANT_FAIL_MAX,
+            reset_timeout=_QDRANT_RESET_TIMEOUT,
+            clock=clock,
+        )
+        # Deferred until first use: the default factory imports the SDK.
+        self._client_factory: Callable[[], QdrantAdapter] = (
+            client_factory
+            if client_factory is not None
+            else self._default_client_factory
+        )
+        self._client: Optional[QdrantAdapter] = None
+        self._next_id = 0
+
+    def _default_client_factory(self) -> QdrantAdapter:
+        """Lazily build the real ``qdrant_client``-backed adapter."""
+        return _DefaultQdrantAdapter(self._url, self._collection, self._dim)
+
+    def _get_client(self) -> QdrantAdapter:
+        """Build (once) and memoize the adapter, on first remote use."""
+        if self._client is None:
+            self._client = self._client_factory()
+        return self._client
+
+    def add(self, vectors: list[list[float]]) -> None:
+        vecs = [list(v) for v in vectors]
+        ids = list(range(self._next_id, self._next_id + len(vecs)))
+        client = self._get_client()
+        call_resilient(
+            lambda: client.upsert(ids, vecs),
+            timeout=self._timeout,
+            retries=self._retries,
+            breaker=self._breaker,
+            clock=self._clock,
+            sleep=self._sleep,
+        )
+        # Only advance the id cursor once the upsert has committed.
+        self._next_id += len(vecs)
+
+    def search(self, vector: list[float], k: int) -> list[tuple[int, float]]:
+        client = self._get_client()
+        return call_resilient(
+            lambda: client.query(list(vector), k),
+            timeout=self._timeout,
+            retries=self._retries,
+            breaker=self._breaker,
+            clock=self._clock,
+            sleep=self._sleep,
+        )
+
+
+class _DefaultQdrantAdapter:
+    """Production ``QdrantAdapter`` over the ``qdrant_client`` SDK.
+
+    LAZY: imports ``qdrant_client`` only on first use (never at construction),
+    then builds the client, ensures the collection exists (create-if-missing,
+    cosine distance, the given ``dim``), and memoizes it. NOT exercised by the
+    offline tests — they inject a fake — but kept correct and import-guarded so
+    importing ``retrieval`` never requires the SDK.
+    """
+
+    def __init__(self, url: str, collection: str, dim: int) -> None:
+        self._url = url
+        self._collection = collection
+        self._dim = dim
+        self._client: Any = None
+
+    def _get_client(self) -> Any:
+        if self._client is not None:
+            return self._client
+        # Lazy import + connect: only reached when a remote call actually runs.
+        from qdrant_client import QdrantClient
+        from qdrant_client.http import models as qmodels
+
+        client = QdrantClient(url=self._url)
+        existing = {c.name for c in client.get_collections().collections}
+        if self._collection not in existing:
+            client.create_collection(
+                collection_name=self._collection,
+                vectors_config=qmodels.VectorParams(
+                    size=self._dim,
+                    distance=qmodels.Distance.COSINE,
+                ),
+            )
+        self._client = client
+        return client
+
+    def upsert(self, ids: list[int], vectors: list[list[float]]) -> None:
+        from qdrant_client.http import models as qmodels
+
+        client = self._get_client()
+        points = [
+            qmodels.PointStruct(id=pid, vector=list(vec))
+            for pid, vec in zip(ids, vectors)
+        ]
+        client.upsert(collection_name=self._collection, points=points)
+
+    def query(self, vector: list[float], k: int) -> list[tuple[int, float]]:
+        client = self._get_client()
+        hits = client.query_points(
+            collection_name=self._collection,
+            query=list(vector),
+            limit=k,
+        ).points
+        # Qdrant returns best-first; keep that order and the (id, score) shape.
+        return [(int(hit.id), float(hit.score)) for hit in hits]
+
+
+def build_vector_index(dim: int = _EMBED_DIM) -> VectorIndex:
+    """Return a Qdrant-backed index when configured, else the in-process one.
+
+    Mirrors ``build_reranker``/``build_embedding_client``: only when
+    ``QDRANT_URL`` is set AND the ``qdrant_client`` SDK imports successfully do
+    we return a ``QdrantVectorIndex`` (with its DEFAULT lazy client factory);
+    any missing URL or import failure degrades to ``InProcessVectorIndex`` so
+    the offline path stays deterministic and never raises.
+    """
+    url = os.environ.get("QDRANT_URL")
+    if not url:
+        return InProcessVectorIndex()
+    try:
+        import qdrant_client  # noqa: F401 - presence check; imported lazily by the adapter
+    except Exception:  # noqa: BLE001 - never let a missing SDK break the offline path
+        return InProcessVectorIndex()
+    return QdrantVectorIndex(url, collection=_QDRANT_COLLECTION, dim=dim)
+
+
 # --- pure-Python Okapi BM25 ---------------------------------------------------
 
 class BM25:
@@ -372,7 +570,11 @@ def build_index(
     bm25 = BM25(chunk_tokens)
 
     vectors = embedder.embed([c.text for c in chunks])
-    vector_index = InProcessVectorIndex()
+    # Module-level reference (not a local alias) so a monkeypatch of
+    # ``retrieval.build_vector_index`` is honoured. Offline (no ``QDRANT_URL``)
+    # this returns an ``InProcessVectorIndex`` and behaviour is unchanged.
+    dim = len(vectors[0]) if vectors else _EMBED_DIM
+    vector_index = build_vector_index(dim)
     vector_index.add(vectors)
 
     return RetrievalIndex(
