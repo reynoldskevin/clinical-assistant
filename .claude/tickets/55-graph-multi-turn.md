@@ -1,13 +1,13 @@
 ---
 id: 055
 title: Multi-turn / follow-up on the supervisor graph (reuse ConversationStore)
-status: tests-authored
+status: ready-for-merge
 depends_on: []
 branch: ticket/55-graph-multi-turn
 base_branch: main
 test_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests/test_graph_multi_turn.py -q"
 full_suite_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests -q"
-attempts: 0
+attempts: 1
 ---
 
 ## Description
