@@ -1,7 +1,7 @@
 ---
 id: 073
 title: GET /metrics endpoint — on-demand Week-2 telemetry snapshot
-status: tests-authored
+status: ready-for-merge
 depends_on: []
 branch: ticket/73-metrics-endpoint
 base_branch: main

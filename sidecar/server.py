@@ -44,6 +44,9 @@ from bbox import locate_citation_boxes
 from demo_bbox import demo_geometry
 from identity_check import check_identity
 from events import INGESTION_COMPLETE, INGESTION_START, log_event
+from metrics_buffer import EventBuffer, install_event_buffer
+from panels import aggregate_week2_events
+from alerts import evaluate_extraction_failure
 
 from pydantic import ValidationError
 
@@ -99,6 +102,12 @@ def _extract_fallback_models() -> tuple[str, ...]:
     return tuple(m.strip() for m in raw.split(",") if m.strip())
 
 _BEARER_PREFIX = "Bearer "
+
+# Extraction-failure alert thresholds (ALERTS.md Alert 6): the alert fires when
+# the non-``ok`` extraction-field fraction strictly exceeds the rate threshold
+# AND at least the volume floor of observations back it.
+_EXTRACTION_FAILURE_THRESHOLD = 0.20
+_EXTRACTION_FAILURE_MIN_FIELDS = 5
 
 
 def _span(tracer: Any, metadata: dict[str, Any]) -> contextlib.AbstractContextManager[Any]:
@@ -676,13 +685,17 @@ def make_handler(
     store: ConversationStore | None = None,
     tracer: Any = None,
     extract_fn: ExtractFn | None = None,
+    event_buffer: EventBuffer | None = None,
 ) -> type[BaseHTTPRequestHandler]:
     """Create a request-handler class bound to an agent-builder and CORS origin.
 
     An optional ``ConversationStore`` enables multi-turn context for requests
     that carry a ``conversation_id``. An optional ``extract_fn`` enables the
     ``POST /extract`` document-extraction endpoint (auto-extract on upload); when
-    it is ``None`` that route replies 404 like any other unknown path.
+    it is ``None`` that route replies 404 like any other unknown path. An optional
+    ``event_buffer`` backs the unauthenticated ``GET /metrics`` endpoint, which
+    folds the buffered ``sidecar.events`` records into the Week-2 panels + the
+    extraction-failure alert; absent a buffer the panels are all-zero.
     """
 
     class Handler(BaseHTTPRequestHandler):
@@ -725,6 +738,26 @@ def make_handler(
                     qdrant_url=os.environ.get("QDRANT_URL"),
                 )
                 self._send_json(status, body)
+                return
+            if path == "/metrics":
+                # Unauthenticated (like /ready): render the Week-2 panels + the
+                # extraction-failure alert from the bounded event buffer. Never
+                # 500 — an empty/absent buffer yields zeros and firing=False.
+                events = event_buffer.snapshot() if event_buffer is not None else []
+                panels = aggregate_week2_events(events)
+                exf = evaluate_extraction_failure(
+                    panels,
+                    threshold=_EXTRACTION_FAILURE_THRESHOLD,
+                    min_fields=_EXTRACTION_FAILURE_MIN_FIELDS,
+                )
+                self._send_json(200, {
+                    "panels": panels,
+                    "alerts": {"extraction_failure": exf},
+                    "window": {
+                        "events": len(events),
+                        "buffer_max": event_buffer.maxlen if event_buffer is not None else 0,
+                    },
+                })
                 return
             self._send_json(404, {"error": "not found"})
 
@@ -834,6 +867,11 @@ def main() -> None:
     # Optional Braintrust turn-tracer: no-op unless BRAINTRUST_API_KEY is set,
     # and fully guarded so observability can never break the request path.
     tracer = build_tracer()
+    # Bounded in-memory buffer of recent sidecar.events records, backing the
+    # unauthenticated GET /metrics dashboard. Capacity is env-overridable.
+    buffer = install_event_buffer(
+        maxlen=int(os.environ.get("OE_AI_AGENT_METRICS_BUFFER") or "1000")
+    )
     handler = make_handler(
         default_agent_builder(summary_url, message_creator, read_url),
         allow_origin,
@@ -842,6 +880,7 @@ def main() -> None:
         default_extract_builder(
             summary_url, message_creator, read_url, word_geometry=demo_geometry
         ),
+        event_buffer=buffer,
     )
     server = ThreadingHTTPServer((host, port), handler)
     print(f"AI sidecar listening on http://{host}:{port}/ask -> {summary_url}", flush=True)
