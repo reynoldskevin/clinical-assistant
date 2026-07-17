@@ -42,4 +42,16 @@ final class AgentCardTest extends TestCase
         $this->assertStringContainsString('data-pid="7"', $html);
         $this->assertStringNotContainsString('data-pid="7abc"', $html);
     }
+
+    public function testUploadOffersTheThreeDocumentTypes(): void
+    {
+        // The doc-type <select> lets a clinician pick the document being uploaded;
+        // the third type (medication list) is offered alongside lab + intake.
+        $html = AgentCard::render(1);
+        $this->assertStringContainsString('value="lab_pdf"', $html);
+        $this->assertStringContainsString('value="intake_form"', $html);
+        $this->assertStringContainsString('value="med_list"', $html);
+        // the med_list option carries a human-readable label
+        $this->assertMatchesRegularExpression('/value="med_list"[^>]*>\s*Medication List/i', $html);
+    }
 }
