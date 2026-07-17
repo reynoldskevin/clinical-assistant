@@ -1,7 +1,7 @@
 ---
 id: 53a
 title: Derived-fact provenance table + DerivedFactProvenanceService (supersede-by-run)
-status: ready-for-merge
+status: done
 depends_on: []
 branch: ticket/53a-derived-fact-provenance
 base_branch: main
