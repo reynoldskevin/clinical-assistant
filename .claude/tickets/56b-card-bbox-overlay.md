@@ -1,13 +1,13 @@
 ---
 id: 056b
 title: Card image preview + citation bounding-box overlay render
-status: tests-authored
+status: ready-for-merge
 depends_on: [056a]
 branch: ticket/56b-card-bbox-overlay
 base_branch: ticket/56a-citation-bbox-locator
 test_command: "npx jest interface/modules/custom_modules/oe-module-ai-agent/tests/agent-widget-bbox.test.js"
 full_suite_command: "npx jest interface/modules/custom_modules/oe-module-ai-agent"
-attempts: 0
+attempts: 1
 ---
 
 ## Description
