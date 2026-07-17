@@ -1,13 +1,13 @@
 ---
 id: 056d
 title: Click-to-reveal per-fact citation source (rework the always-on overlay)
-status: tests-authored
+status: ready-for-merge
 depends_on: [056a, 056b, 056c]
 branch: ticket/56d-click-to-reveal-citation
 base_branch: ticket/56c-bbox-demo-provider
 test_command: "npx jest interface/modules/custom_modules/oe-module-ai-agent/tests/agent-widget-bbox.test.js && docker exec w2-sidecar-test python -m pytest -c pytest.ini tests/test_bbox_locator.py tests/test_bbox_demo_provider.py -q"
 full_suite_command: "npx jest interface/modules/custom_modules/oe-module-ai-agent && docker exec w2-sidecar-test python -m pytest -c pytest.ini tests -q"
-attempts: 0
+attempts: 1
 ---
 
 ## Description
