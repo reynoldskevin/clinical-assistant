@@ -212,4 +212,8 @@ Eval dataset [here](EVAL_DATASET.md)\
 AI Cost Analysis [here](COST_ANALYSIS.md)
 
 ## Week 2 Submission Requirements
-Latency and Cost report [here](COST_ANALYSIS_W2_MVP.md)
+Latency and Cost report [here](COST_ANALYSIS_W2_MVP.md)\
+Lab Report [here](/sidecar/fixtures/documents/synthetic_lab_report.pdf)\
+Intake Form [here](/sidecar/fixtures/documents/synthetic_intake_form_match.png)\
+Intake Form (Incorrect Patient) [here](/sidecar/fixtures/documents/synthetic_intake_form.png)\
+Intake Form (Noisy scan) [here](/sidecar/fixtures/documents/synthetic_intake_form_noisy.png)
