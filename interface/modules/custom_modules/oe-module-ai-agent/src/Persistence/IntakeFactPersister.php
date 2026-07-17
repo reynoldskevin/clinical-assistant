@@ -7,16 +7,17 @@
  *
  * Narrative fields are split by NarrativeFieldSplitter (on `;`/newlines) into
  * line-items, each filed as one record with its text as the drug/title/body:
- *   - current_medications → prescriptions (active)
+ *   - current_medications → lists type='medication' (the Medications panel)
  *   - allergies           → lists type='allergy'
  *   - family_history      → lists type='medical_problem'
- *   - chief_concern       → one pnotes row (NOT split)
+ *   - chief_concern       → an encounter reason (form_encounter + forms), NOT split
  *   - demographics        → never written (identity is the chart's own)
  *
  * Per fact_type, the prior run is superseded first (provenance rows flipped
- * active=0) and the underlying clinical records are SOFT-deactivated
- * (prescriptions.active=0 / lists.activity=0 / pnotes.activity=0), because the
- * module reads those tables filtered on active/activity=1.
+ * active=0) and the underlying agent-created records are retired: `lists` rows are
+ * DELETED (the native Issues/Medications panels filter on enddate, not activity, so
+ * a soft flag would leave a visible duplicate) and a chief-concern encounter is
+ * removed (form_encounter + its forms registration).
  *
  * Raw prepared-statement SQL on the injected PDO — the OpenEMR service classes
  * need the full app bootstrap, unavailable in the module's isolated harness.
@@ -41,7 +42,6 @@ final class IntakeFactPersister
     private const DOC_TYPE = 'intake_form';
 
     /** prescriptions.drug is varchar(150). */
-    private const DRUG_MAX = 150;
 
     /** lists.title / pnotes.title are varchar(255). */
     private const TITLE_MAX = 255;
@@ -63,6 +63,7 @@ final class IntakeFactPersister
         string $extractionRunId,
         int $createdBy,
         array $fact,
+        ?string $createdByName = null,
     ): array {
         $medications = $this->splitter->split($this->field($fact, 'current_medications'));
         $allergies = $this->splitter->split($this->field($fact, 'allergies'));
@@ -71,11 +72,16 @@ final class IntakeFactPersister
 
         $superseded = 0;
 
-        $filedMedication = $this->fileMedications(
+        // Medications are filed to the Medications list (lists type='medication'),
+        // which is where OpenEMR's Medications panel reads them — NOT the
+        // prescriptions table (that surfaces under Prescriptions).
+        $filedMedication = $this->fileList(
             $pid,
             $documentId,
             $extractionRunId,
             $createdBy,
+            'medication',
+            'medication',
             $medications,
             $superseded,
         );
@@ -106,6 +112,7 @@ final class IntakeFactPersister
             $createdBy,
             $chiefConcern,
             $superseded,
+            $createdByName,
         );
 
         return [
@@ -117,54 +124,6 @@ final class IntakeFactPersister
             ],
             'superseded' => $superseded,
         ];
-    }
-
-    /**
-     * @param list<string> $lines
-     */
-    private function fileMedications(
-        int $pid,
-        int $documentId,
-        string $extractionRunId,
-        int $createdBy,
-        array $lines,
-        int &$superseded,
-    ): int {
-        $superseded += $this->supersede($pid, $documentId, 'medication');
-
-        $today = date('Y-m-d');
-        $insert = $this->db->prepare(
-            'INSERT INTO prescriptions '
-            . '(patient_id, drug, active, start_date, date_added, txDate, '
-            . 'usage_category_title, request_intent_title, provider_id) '
-            . 'VALUES (?, ?, 1, ?, NOW(), ?, ?, ?, ?)'
-        );
-
-        $filed = 0;
-        foreach ($lines as $line) {
-            $drug = $this->truncate($line, self::DRUG_MAX);
-            $insert->bindValue(1, $pid, \PDO::PARAM_INT);
-            $insert->bindValue(2, $drug, \PDO::PARAM_STR);
-            $insert->bindValue(3, $today, \PDO::PARAM_STR);
-            $insert->bindValue(4, $today, \PDO::PARAM_STR);
-            $insert->bindValue(5, '', \PDO::PARAM_STR);
-            $insert->bindValue(6, '', \PDO::PARAM_STR);
-            $insert->bindValue(7, $createdBy, \PDO::PARAM_INT);
-            $insert->execute();
-
-            $targetId = (int) $this->db->lastInsertId();
-            $this->provenance->record(
-                $pid,
-                $documentId,
-                self::DOC_TYPE,
-                $extractionRunId,
-                $createdBy,
-                new DerivedFactRef('medication', 'prescriptions', $targetId, null, $drug),
-            );
-            $filed++;
-        }
-
-        return $filed;
     }
 
     /**
@@ -219,6 +178,7 @@ final class IntakeFactPersister
         int $createdBy,
         string $concern,
         int &$superseded,
+        ?string $createdByName = null,
     ): int {
         $superseded += $this->supersede($pid, $documentId, 'chief_concern');
 
@@ -226,48 +186,97 @@ final class IntakeFactPersister
             return 0;
         }
 
-        $insert = $this->db->prepare(
-            'INSERT INTO pnotes (pid, title, body, activity, date, deleted, user) '
-            . 'VALUES (?, ?, ?, 1, NOW(), 0, ?)'
-        );
-        $insert->bindValue(1, $pid, \PDO::PARAM_INT);
-        $insert->bindValue(2, 'AI intake: chief concern', \PDO::PARAM_STR);
-        $insert->bindValue(3, $concern, \PDO::PARAM_STR);
-        $insert->bindValue(4, (string) $createdBy, \PDO::PARAM_STR);
-        $insert->execute();
+        // Chief concern is filed as an encounter's REASON. A real OpenEMR encounter
+        // is a form_encounter row PLUS a `forms` registration (formdir='newpatient',
+        // deleted=0) — the encounters history joins them and filters on that. The
+        // encounter number is unique; MAX+1 is sufficient here (single-writer flow).
+        $author = ($createdByName !== null && $createdByName !== '')
+            ? $createdByName
+            : (string) $createdBy;
+        $encounterNo = (int) ($this->db->query(
+            'SELECT COALESCE(MAX(encounter), 0) + 1 AS n FROM form_encounter'
+        )->fetch()['n']);
 
-        $targetId = (int) $this->db->lastInsertId();
+        $enc = $this->db->prepare(
+            'INSERT INTO form_encounter (pid, encounter, date, reason, provider_id) '
+            . 'VALUES (?, ?, NOW(), ?, ?)'
+        );
+        $enc->bindValue(1, $pid, \PDO::PARAM_INT);
+        $enc->bindValue(2, $encounterNo, \PDO::PARAM_INT);
+        $enc->bindValue(3, $this->truncate($concern, self::TITLE_MAX), \PDO::PARAM_STR);
+        $enc->bindValue(4, $createdBy, \PDO::PARAM_INT);
+        $enc->execute();
+        $formEncounterId = (int) $this->db->lastInsertId();
+
+        $form = $this->db->prepare(
+            'INSERT INTO forms (date, encounter, form_name, form_id, pid, user, groupname, formdir, deleted) '
+            . "VALUES (NOW(), ?, 'New Patient Encounter', ?, ?, ?, 'Default', 'newpatient', 0)"
+        );
+        $form->bindValue(1, $encounterNo, \PDO::PARAM_INT);
+        $form->bindValue(2, $formEncounterId, \PDO::PARAM_INT);
+        $form->bindValue(3, $pid, \PDO::PARAM_INT);
+        $form->bindValue(4, $author, \PDO::PARAM_STR);
+        $form->execute();
+
+        // Provenance target is the encounter NUMBER so supersede can retire both the
+        // form_encounter row and its forms registration.
         $this->provenance->record(
             $pid,
             $documentId,
             self::DOC_TYPE,
             $extractionRunId,
             $createdBy,
-            new DerivedFactRef('chief_concern', 'pnotes', $targetId, null, $this->truncate($concern, self::TITLE_MAX)),
+            new DerivedFactRef('chief_concern', 'form_encounter', $encounterNo, null, $this->truncate($concern, self::TITLE_MAX)),
         );
 
         return 1;
     }
 
     /**
-     * Supersede the prior run for one fact_type and soft-deactivate each returned
-     * clinical record. Returns the number of records deactivated.
+     * Supersede the prior run for one fact_type and retire each returned clinical
+     * record so it no longer shows in the chart. Returns the number retired.
      */
     private function supersede(int $pid, int $documentId, string $factType): int
     {
         $refs = $this->provenance->supersedePriorRun($pid, $documentId, $factType);
         foreach ($refs as $ref) {
-            $this->deactivate($ref);
+            $this->retirePriorRecord($ref);
         }
 
         return count($refs);
     }
 
-    private function deactivate(DerivedFactRef $ref): void
+    /**
+     * Retire a superseded, agent-created record. The mechanism differs by table
+     * because OpenEMR's native panels filter differently:
+     *  - the Prescriptions panel and the pnotes/Messages views honor active/activity,
+     *    so a soft flag (=0) hides a superseded row;
+     *  - the native Issues panel (interface/patient_file/summary/stats.php) filters on
+     *    `enddate`, NOT `activity`, so a soft-flagged `lists` row would still display
+     *    as a duplicate — it must be DELETED.
+     * A chief-concern encounter (target_table='form_encounter') is retired by
+     * deleting BOTH the form_encounter row and its `forms` registration, keyed on the
+     * encounter number (the provenance target id). The other tables retire by id.
+     * We only ever touch rows the agent itself created (the provenance target),
+     * never a clinician's own records; the superseded provenance row preserves history.
+     */
+    private function retirePriorRecord(DerivedFactRef $ref): void
     {
+        if ($ref->targetTable === 'form_encounter') {
+            foreach ([
+                'DELETE FROM form_encounter WHERE encounter = ?',
+                "DELETE FROM forms WHERE encounter = ? AND formdir = 'newpatient'",
+            ] as $encSql) {
+                $stmt = $this->db->prepare($encSql);
+                $stmt->bindValue(1, $ref->targetId, \PDO::PARAM_INT);
+                $stmt->execute();
+            }
+            return;
+        }
+
         $sql = match ($ref->targetTable) {
             'prescriptions' => 'UPDATE prescriptions SET active = 0 WHERE id = ?',
-            'lists' => 'UPDATE lists SET activity = 0 WHERE id = ?',
+            'lists' => 'DELETE FROM lists WHERE id = ?',
             'pnotes' => 'UPDATE pnotes SET activity = 0 WHERE id = ?',
             default => null,
         };

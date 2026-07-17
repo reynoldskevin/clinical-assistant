@@ -109,6 +109,7 @@
     // their own boundary service.
     var tokenUrl = new URL('token.php', document.currentScript ? document.currentScript.src : window.location.href).href;
     var uploadUrl = new URL('upload.php', document.currentScript ? document.currentScript.src : window.location.href).href;
+    var persistUrl = new URL('persist.php', document.currentScript ? document.currentScript.src : window.location.href).href;
     var sidecarUrl = root.dataset.sidecarUrl || '/ai-agent-sidecar/ask';
     // The SSE endpoint is derived from the same base as the buffered /ask URL, so
     // a deployment that overrides data-sidecar-url need only set it once.
@@ -161,7 +162,13 @@
             + '.oe-ai-agent-turn-caret{display:inline-block;margin-right:0.45em;'
             + 'transition:transform 0.15s ease}'
             + '.oe-ai-agent-turn-q[aria-expanded="true"] .oe-ai-agent-turn-caret{transform:rotate(90deg)}'
-            + '.oe-ai-agent-turn-a{padding:6px 10px}';
+            + '.oe-ai-agent-turn-a{padding:6px 10px}'
+            // "Accept & file to chart" action on the extracted-facts panel.
+            + '.oe-ai-agent-file-btn{margin-top:0.5em;background:#337ab7;color:#fff;'
+            + 'border:0;border-radius:4px;padding:5px 12px;cursor:pointer}'
+            + '.oe-ai-agent-file-btn:disabled{opacity:0.6;cursor:default}'
+            + '.oe-ai-agent-filed{margin-top:0.5em;color:#3c763d;font-weight:bold}'
+            + '.oe-ai-agent-file-error{margin-top:0.5em;color:#a94442}';
         (document.head || document.documentElement).appendChild(style);
     })();
 
@@ -587,7 +594,7 @@
         // Render a validated LabFact / IntakeFact envelope as a small facts panel.
         // Built entirely with createElement + textContent, so no server- or
         // model-supplied value is ever interpreted as HTML.
-        function renderExtraction(data) {
+        function renderExtraction(data, documentId, isDuplicate) {
             if (!extractBox) {
                 return;
             }
@@ -658,6 +665,74 @@
                 panel.appendChild(flagged);
             }
 
+            // "Accept & file to chart": commit the held facts to the chart. Hidden
+            // on a wrong-chart identity mismatch — don't invite filing to the wrong
+            // patient. On click the button disables, POSTs the held envelope to
+            // persist.php, and confirms (or shows a safe failure) inline.
+            if (!(identityCheck && identityCheck.matches === false)) {
+                var fileBtn = document.createElement('button');
+                fileBtn.type = 'button';
+                fileBtn.className = 'oe-ai-agent-file-btn';
+                // A duplicate ("already on file") upload is an OLD document — filing
+                // it could re-file stale facts, so the action is disabled with a
+                // clear label rather than offered.
+                if (isDuplicate) {
+                    fileBtn.textContent = 'Cannot file an old upload';
+                    fileBtn.disabled = true;
+                    panel.appendChild(fileBtn);
+                    extractBox.appendChild(panel);
+                    return;
+                }
+                fileBtn.textContent = 'Accept & file to chart';
+                fileBtn.addEventListener('click', function () {
+                    fileBtn.disabled = true;
+
+                    var body = new URLSearchParams();
+                    body.set('csrf_token', csrfToken);
+                    body.set('payload', JSON.stringify({
+                        source_document_id: documentId,
+                        extraction_run_id: data.correlation_id || '',
+                        doc_type: data.doc_type,
+                        fact: data.fact || {}
+                    }));
+
+                    fetch(persistUrl, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: body.toString()
+                    }).then(function (res) {
+                        return res.json().catch(function () {
+                            return {};
+                        }).then(function (respBody) {
+                            return { ok: res.ok, body: respBody || {} };
+                        });
+                    }).then(function (result) {
+                        if (!result.ok || !result.body.ok) {
+                            throw new Error('file failed');
+                        }
+                        var filed = document.createElement('div');
+                        filed.className = 'oe-ai-agent-filed';
+                        var count = Number(result.body.total) || 0;
+                        filed.textContent = 'Filed ' + count + ' facts to the chart.';
+                        if (fileBtn.parentNode) {
+                            fileBtn.parentNode.replaceChild(filed, fileBtn);
+                        }
+                    }).catch(function () {
+                        // Never surface internal detail; a safe inline message only.
+                        var existing = panel.querySelector('.oe-ai-agent-file-error');
+                        if (!existing) {
+                            var err = document.createElement('div');
+                            err.className = 'oe-ai-agent-file-error';
+                            err.textContent = 'Could not file to the chart. Please try again.';
+                            panel.appendChild(err);
+                        }
+                        fileBtn.disabled = false;
+                    });
+                });
+                panel.appendChild(fileBtn);
+            }
+
             extractBox.appendChild(panel);
         }
 
@@ -665,7 +740,7 @@
         // to extract strict facts from the freshly-uploaded document. The pid is
         // sent from the card (as /ask does); the boundary re-checks the token
         // scope on the document read, so it can only reach the patient in context.
-        function extractDocument(documentId, docType, fileName) {
+        function extractDocument(documentId, docType, fileName, isDuplicate) {
             if (!extractBox || !documentId) {
                 return;
             }
@@ -695,7 +770,7 @@
                     setExtractNote('Stored, but automatic extraction did not produce a valid result.', false);
                     return;
                 }
-                renderExtraction(result.body);
+                renderExtraction(result.body, documentId, isDuplicate);
                 // Record the file only now that a real facts panel is on screen,
                 // so a note/failure path leaves nothing to archive on next upload.
                 extractedFileName = fileName || null;
@@ -767,7 +842,7 @@
                 }
                 uploadForm.reset();
                 // Auto-extract strict facts from the stored document (existing or new).
-                extractDocument(data.id, docType, fileName);
+                extractDocument(data.id, docType, fileName, data.duplicate === true);
             }).catch(function () {
                 setStatus('Upload failed. Please try again.', false);
             }).finally(function () {
