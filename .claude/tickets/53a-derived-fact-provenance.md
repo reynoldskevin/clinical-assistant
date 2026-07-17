@@ -1,7 +1,7 @@
 ---
 id: 53a
 title: Derived-fact provenance table + DerivedFactProvenanceService (supersede-by-run)
-status: todo
+status: ready-for-merge
 depends_on: []
 branch: ticket/53a-derived-fact-provenance
 base_branch: main
@@ -65,19 +65,19 @@ No clinical-record writes happen in this ticket — only the provenance store an
 its supersede bookkeeping.
 
 ## Acceptance criteria
-- [ ] A Doctrine migration creates `ai_derived_fact` with the columns + indexes
+- [x] A Doctrine migration creates `ai_derived_fact` with the columns + indexes
   above; `down()` drops it. Applying it (`./cli migrate`) in the dev container
   creates the table; a `W2_MIGRATIONS.md` entry documents it.
-- [ ] `DerivedFactProvenanceService::record()` inserts a row with a fresh uuid and
+- [x] `DerivedFactProvenanceService::record()` inserts a row with a fresh uuid and
   the given refs, and returns its id; the row is readable via `activeFor()`.
-- [ ] `supersedePriorRun(pid, doc, factType)` flips exactly the matching active
+- [x] `supersedePriorRun(pid, doc, factType)` flips exactly the matching active
   rows to `active=0` with a `superseded_at`, leaves other pids/docs/factTypes
   untouched, returns the superseded refs, and is idempotent (a second call returns
   nothing and changes nothing).
-- [ ] `activeFor()` returns only `active=1` rows for the pid+document.
-- [ ] Unit-level: record/supersede SQL is exercised with an injected fake executor
+- [x] `activeFor()` returns only `active=1` rows for the pid+document.
+- [x] Unit-level: record/supersede SQL is exercised with an injected fake executor
   (no DB) proving the WHERE/SET shapes; DB-backed: the same against the real table.
-- [ ] No regression in the services suite or the module jest suite.
+- [x] No regression in the services suite or the module jest suite.
 
 ## Test plan (orchestrator authors these)
 - isolated unit (no DB) `tests/Tests/Isolated/...` or module test: inject a fake
