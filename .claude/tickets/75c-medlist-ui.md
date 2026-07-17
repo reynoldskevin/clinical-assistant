@@ -1,7 +1,7 @@
 ---
 id: 075c
 title: med_list UI — doc-type option + widget field rendering
-status: tests-authored
+status: ready-for-merge
 depends_on: []
 branch: ticket/75c-medlist-ui
 base_branch: main
