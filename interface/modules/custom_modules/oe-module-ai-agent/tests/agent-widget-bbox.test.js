@@ -1,13 +1,13 @@
 /**
  * @jest-environment jsdom
  *
- * T56d acceptance test (LOCKED) — click-to-reveal per-fact citation source.
+ * T56e acceptance test (LOCKED) — [show source] control + modal overlay.
  *
- * The overlay is NOT drawn all at once. The /extract response carries boxes keyed
- * PER FIELD (`citation_boxes = {field: [ {x,y,w,h} ]}`). Each cited fact is a
- * clickable control; clicking it reveals a document-image preview overlaying ONLY
- * that fact's box(es). Clicking the active fact again hides the preview. Facts with
- * no boxes are not clickable; no boxes / non-image upload => no preview.
+ * Each cited fact renders a small "show source" control (not the whole row).
+ * Clicking it opens a MODAL overlay showing the document image with ONLY that
+ * fact's box(es). Another fact's control swaps the boxes; the close button, the
+ * backdrop, or re-clicking the active control dismisses the modal. The per-field
+ * `citation_boxes` contract (T56d) is unchanged.
  */
 /* global __dirname, setTimeout */
 const fs = require('fs');
@@ -46,7 +46,6 @@ function flushAll() {
     });
 }
 
-// `boxes` is the per-field citation_boxes map (or null to omit it entirely).
 function installFetch(boxes) {
     global.fetch = jest.fn(function (url) {
         const u = String(url);
@@ -84,24 +83,23 @@ function upload(name, type) {
     el('.oe-ai-agent-upload-form').dispatchEvent(new Event('submit', { cancelable: true }));
 }
 
-// chief_concern has 1 box; current_medications has 2; allergies has NONE.
 const BOXES = {
     chief_concern: [{ x: 10, y: 100, w: 100, h: 20 }],
     current_medications: [{ x: 10, y: 140, w: 80, h: 20 }, { x: 10, y: 180, w: 60, h: 20 }],
 };
 
 function click(elm) { elm.dispatchEvent(new Event('click', { bubbles: true })); }
-
-function previewShown() {
-    const p = el('.oe-ai-agent-extract .oe-ai-agent-doc-preview');
-    return p !== null && p.style.display !== 'none';
+function showSource(field) { return el('.oe-ai-agent-show-source[data-field="' + field + '"]'); }
+function modalShown() {
+    const m = el('.oe-ai-agent-source-modal');
+    return m !== null && m.style.display !== 'none';
 }
 
 beforeEach(() => {
     global.URL.createObjectURL = jest.fn(function () { return 'blob:preview-xyz'; });
 });
 
-describe('agent-widget: click-to-reveal per-fact citation source', () => {
+describe('agent-widget: [show source] control + modal overlay', () => {
     async function render(boxes) {
         document.body.innerHTML = SCAFFOLD;
         installFetch(boxes);
@@ -110,70 +108,94 @@ describe('agent-widget: click-to-reveal per-fact citation source', () => {
         await flushAll();
     }
 
-    test('nothing is drawn until a fact is clicked', async () => {
+    test('each cited fact gets a small "show source" control; non-cited do not', async () => {
         await render(BOXES);
+        const ctl = showSource('chief_concern');
+        expect(ctl).not.toBeNull();
+        expect(ctl.textContent.toLowerCase()).toContain('source');
+        expect(showSource('current_medications')).not.toBeNull();
+        expect(showSource('allergies')).toBeNull();
+        // the value text is still shown for the fact
+        expect(el('.oe-ai-agent-extract').textContent.toLowerCase()).toContain('chest pain');
+    });
+
+    test('the whole fact row is NOT the click target (only the small control)', async () => {
+        await render(BOXES);
+        // no dd carries the click affordance any more
+        expect(el('.oe-ai-agent-extract dd[data-field]')).toBeNull();
+        expect(el('.oe-ai-agent-extract dd[role="button"]')).toBeNull();
+    });
+
+    test('the modal is hidden until a source is opened', async () => {
+        await render(BOXES);
+        expect(modalShown()).toBe(false);
         expect(all('.oe-ai-agent-citation-box').length).toBe(0);
-        expect(previewShown()).toBe(false);
     });
 
-    test('only cited facts are clickable controls', async () => {
+    test('clicking [show source] opens the modal with ONLY that fact\'s box', async () => {
         await render(BOXES);
-        expect(el('[data-field="chief_concern"]')).not.toBeNull();
-        expect(el('[data-field="chief_concern"]').className).toContain('oe-ai-agent-fact-cite');
-        expect(el('[data-field="current_medications"]')).not.toBeNull();
-        // allergies had no boxes -> not clickable
-        expect(el('[data-field="allergies"]')).toBeNull();
-    });
+        click(showSource('chief_concern'));
 
-    test('clicking a fact reveals the preview with ONLY that fact\'s box', async () => {
-        await render(BOXES);
-        click(el('[data-field="chief_concern"]'));
-
-        expect(previewShown()).toBe(true);
-        expect(el('.oe-ai-agent-doc-image').getAttribute('src')).toBe('blob:preview-xyz');
+        expect(modalShown()).toBe(true);
+        expect(el('.oe-ai-agent-source-modal .oe-ai-agent-doc-image').getAttribute('src')).toBe('blob:preview-xyz');
         const drawn = all('.oe-ai-agent-citation-box');
         expect(drawn.length).toBe(1);
         expect(parseFloat(drawn[0].style.top)).toBeCloseTo(100 / 600 * 100, 3);
     });
 
-    test('clicking another fact swaps to that fact\'s boxes only', async () => {
+    test('another fact\'s [show source] swaps to its boxes', async () => {
         await render(BOXES);
-        click(el('[data-field="chief_concern"]'));
-        click(el('[data-field="current_medications"]'));
+        click(showSource('chief_concern'));
+        click(showSource('current_medications'));
 
         const drawn = all('.oe-ai-agent-citation-box');
-        expect(drawn.length).toBe(2); // current_medications has two boxes
+        expect(drawn.length).toBe(2);
         const tops = drawn.map(function (b) { return parseFloat(b.style.top); }).sort();
         expect(tops[0]).toBeCloseTo(140 / 600 * 100, 3);
         expect(tops[1]).toBeCloseTo(180 / 600 * 100, 3);
-        // the chief_concern box (top 16.667%) is gone
-        expect(tops).not.toContain(100 / 600 * 100);
     });
 
-    test('clicking the active fact again hides the preview (toggle)', async () => {
+    test('the close button dismisses the modal and clears boxes', async () => {
         await render(BOXES);
-        click(el('[data-field="current_medications"]'));
-        expect(previewShown()).toBe(true);
-        click(el('[data-field="current_medications"]'));
-        expect(previewShown()).toBe(false);
+        click(showSource('chief_concern'));
+        expect(modalShown()).toBe(true);
+        click(el('.oe-ai-agent-source-close'));
+        expect(modalShown()).toBe(false);
         expect(all('.oe-ai-agent-citation-box').length).toBe(0);
     });
 
-    test('facts still render; no citation_boxes => no clickable facts, no preview', async () => {
+    test('clicking the backdrop dismisses the modal', async () => {
+        await render(BOXES);
+        click(showSource('chief_concern'));
+        expect(modalShown()).toBe(true);
+        // clicking the modal backdrop itself (not its inner content) closes it
+        click(el('.oe-ai-agent-source-modal'));
+        expect(modalShown()).toBe(false);
+    });
+
+    test('re-clicking the active fact\'s [show source] toggles the modal closed', async () => {
+        await render(BOXES);
+        click(showSource('current_medications'));
+        expect(modalShown()).toBe(true);
+        click(showSource('current_medications'));
+        expect(modalShown()).toBe(false);
+    });
+
+    test('no citation_boxes => no controls and no modal; facts still render', async () => {
         await render(null);
         expect(el('.oe-ai-agent-extract .card')).not.toBeNull();
         expect(el('.oe-ai-agent-extract').textContent.toLowerCase()).toContain('chest pain');
-        expect(el('[data-field="chief_concern"]')).toBeNull();
+        expect(showSource('chief_concern')).toBeNull();
         expect(el('.oe-ai-agent-doc-image')).toBeNull();
     });
 
-    test('a non-image (PDF) upload has no clickable citations even with boxes', async () => {
+    test('a non-image (PDF) upload has no [show source] controls even with boxes', async () => {
         document.body.innerHTML = SCAFFOLD;
         installFetch(BOXES);
         loadWidget();
         upload('report.pdf', 'application/pdf');
         await flushAll();
-        expect(el('[data-field="chief_concern"]')).toBeNull();
+        expect(showSource('chief_concern')).toBeNull();
         expect(global.URL.createObjectURL).not.toHaveBeenCalled();
     });
 });

@@ -642,13 +642,14 @@
                 }
             });
 
-            // Click-to-reveal citation source (T56d). ``data.citation_boxes`` is a
+            // Click-to-reveal citation source (T56e). ``data.citation_boxes`` is a
             // PER-FIELD map ``{field: [ {x,y,w,h} ]}``. When the upload was an image
             // we can preview and the map is a non-empty object with page dimensions,
-            // each cited fact becomes a clickable control that reveals a single,
-            // otherwise-hidden document preview overlaying ONLY that fact's box(es).
-            // The preview + overlay layer are built first so the dl's click handlers
-            // (attached below) can reference them.
+            // each cited fact gets a small "show source" control (not the whole row).
+            // Clicking it opens a MODAL overlay showing the document image with ONLY
+            // that fact's box(es); the close control, the backdrop, or re-clicking
+            // the active control dismisses it. The modal + overlay layer are built
+            // first so the dl's control handlers (attached below) can reference them.
             var cites = data.citation_boxes;
             var hasCites = previewUrl
                 && cites
@@ -657,37 +658,9 @@
                 && data.page_width
                 && data.page_height;
 
-            var previewContainer = null;
+            var modal = null;
             var overlayLayer = null;
             var activeField = null;
-
-            if (hasCites) {
-                previewContainer = document.createElement('div');
-                previewContainer.className = 'oe-ai-agent-doc-preview';
-                previewContainer.style.display = 'none';
-                previewContainer.style.marginTop = '0.5em';
-                previewContainer.style.maxWidth = '360px';
-
-                var frame = document.createElement('div');
-                frame.style.position = 'relative';
-
-                var img = document.createElement('img');
-                img.className = 'oe-ai-agent-doc-image';
-                img.setAttribute('src', previewUrl);
-                img.style.width = '100%';
-                img.style.display = 'block';
-                frame.appendChild(img);
-
-                overlayLayer = document.createElement('div');
-                overlayLayer.style.position = 'absolute';
-                overlayLayer.style.left = '0';
-                overlayLayer.style.top = '0';
-                overlayLayer.style.width = '100%';
-                overlayLayer.style.height = '100%';
-                frame.appendChild(overlayLayer);
-
-                previewContainer.appendChild(frame);
-            }
 
             function citedField(k) {
                 return hasCites
@@ -718,16 +691,87 @@
                 });
             }
 
+            function closeModal() {
+                modal.style.display = 'none';
+                clearOverlay();
+                activeField = null;
+            }
+
             function toggleField(k) {
                 if (activeField === k) {
-                    previewContainer.style.display = 'none';
-                    clearOverlay();
-                    activeField = null;
+                    closeModal();
                     return;
                 }
                 drawField(k);
-                previewContainer.style.display = '';
+                modal.style.display = 'flex';
                 activeField = k;
+            }
+
+            if (hasCites) {
+                modal = document.createElement('div');
+                modal.className = 'oe-ai-agent-source-modal';
+                modal.style.display = 'none';
+                modal.style.position = 'fixed';
+                modal.style.top = '0';
+                modal.style.left = '0';
+                modal.style.right = '0';
+                modal.style.bottom = '0';
+                modal.style.background = 'rgba(0,0,0,0.6)';
+                modal.style.zIndex = '10500';
+                modal.style.alignItems = 'center';
+                modal.style.justifyContent = 'center';
+                // Clicking the backdrop (the modal element itself, not its content)
+                // dismisses the modal; clicks inside the content box do not bubble
+                // up to here as evt.target === modal, so they are ignored.
+                modal.addEventListener('click', function (evt) {
+                    if (evt.target === modal) {
+                        closeModal();
+                    }
+                });
+
+                var content = document.createElement('div');
+                content.className = 'oe-ai-agent-source-modal-content';
+                content.style.background = '#fff';
+                content.style.padding = '0.75em';
+                content.style.borderRadius = '4px';
+                content.style.maxWidth = '90vw';
+                content.style.maxHeight = '90vh';
+                content.style.overflow = 'auto';
+
+                var closeBtn = document.createElement('button');
+                closeBtn.type = 'button';
+                closeBtn.className = 'oe-ai-agent-source-close';
+                closeBtn.textContent = '×';
+                closeBtn.style.float = 'right';
+                closeBtn.style.border = '0';
+                closeBtn.style.background = 'transparent';
+                closeBtn.style.fontSize = '1.4em';
+                closeBtn.style.lineHeight = '1';
+                closeBtn.style.cursor = 'pointer';
+                closeBtn.addEventListener('click', closeModal);
+                content.appendChild(closeBtn);
+
+                var frame = document.createElement('div');
+                frame.style.position = 'relative';
+                frame.style.clear = 'both';
+
+                var img = document.createElement('img');
+                img.className = 'oe-ai-agent-doc-image';
+                img.setAttribute('src', previewUrl);
+                img.style.width = '100%';
+                img.style.display = 'block';
+                frame.appendChild(img);
+
+                overlayLayer = document.createElement('div');
+                overlayLayer.style.position = 'absolute';
+                overlayLayer.style.left = '0';
+                overlayLayer.style.top = '0';
+                overlayLayer.style.width = '100%';
+                overlayLayer.style.height = '100%';
+                frame.appendChild(overlayLayer);
+
+                content.appendChild(frame);
+                modal.appendChild(content);
             }
 
             var dl = document.createElement('dl');
@@ -738,23 +782,36 @@
                 dt.textContent = humanize(k);
                 var dd = document.createElement('dd');
                 dd.className = 'col-7 mb-1';
-                dd.textContent = valueText(fact[k]);
+                // Keep the value text in the dd via its own text node so the small
+                // control can be appended after it without the dd itself carrying
+                // any click affordance (no data-field / role="button").
+                dd.appendChild(document.createTextNode(valueText(fact[k])));
                 if (citedField(k)) {
-                    dd.className += ' oe-ai-agent-fact-cite';
-                    dd.setAttribute('data-field', k);
-                    dd.setAttribute('role', 'button');
-                    dd.style.cursor = 'pointer';
-                    dd.addEventListener('click', function () {
+                    var btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'oe-ai-agent-show-source';
+                    btn.setAttribute('data-field', k);
+                    btn.textContent = 'show source';
+                    btn.style.marginLeft = '0.4em';
+                    btn.style.fontSize = '0.75em';
+                    btn.style.border = '0';
+                    btn.style.background = 'transparent';
+                    btn.style.color = '#337ab7';
+                    btn.style.textDecoration = 'underline';
+                    btn.style.cursor = 'pointer';
+                    btn.style.padding = '0';
+                    btn.addEventListener('click', function () {
                         toggleField(k);
                     });
+                    dd.appendChild(btn);
                 }
                 dl.appendChild(dt);
                 dl.appendChild(dd);
             });
             panel.appendChild(dl);
 
-            if (previewContainer) {
-                panel.appendChild(previewContainer);
+            if (modal) {
+                panel.appendChild(modal);
             }
 
             var unsupported = data.unsupported_fields || [];
