@@ -253,7 +253,12 @@ run.
 
 **Resilience.** Every outbound LLM + retrieval call has a timeout, bounded retry,
 and a circuit breaker; a slow/absent dependency trips the breaker instead of
-hanging the request.
+hanging the request. The **Qdrant** dense-store dependency pins the concrete
+budget (T58a/b defaults): a per-call **timeout of 2 s**, **2 retries** on a
+transient failure, and a **circuit breaker** that opens after **5 consecutive**
+failures with a **30 s** reset **cooldown** before the next probe is attempted.
+Within that budget a slow or unreachable Qdrant fails fast rather than stalling
+the turn.
 
 **Health/readiness.** `/health` stays an unconditional liveness check. `/ready`
 extends the Week 1 probes to also check **document storage, Qdrant, and Cohere**,
@@ -336,7 +341,7 @@ scheduled/manual job as in Week 1.
 | Extraction schema violation | `extraction.field` events with `outcome=unsupported`/validation error; no derived-fact write | Fact is flagged, not persisted; surface "couldn't extract X"; re-run extraction or fall back to structured-only answer |
 | RAG returns no results | `retrieval.miss` with zero hits; empty rerank input | Answer proceeds with patient-record facts only and states no guideline evidence was found — never fabricates evidence |
 | Supervisor routing error | Supervisor span with no child worker spans, or a worker child span that errored | Circuit breaker / retry on the worker; if persistent, degrade to the Week 1 single-tool answer path |
-| Vector index / reranker unavailable | `/ready` degraded (Qdrant/Cohere probe false); breaker open in trace | Serve record-only grounded answer; rebuild Qdrant from corpus if the index is corrupt (§ backup) |
+| Vector index / reranker unavailable (Qdrant down) | `/ready` degraded (Qdrant/Cohere probe false); breaker open in trace | The retrieval call **fails fast** (2 s timeout, 2 retries) rather than hanging; after 5 consecutive failures the **breaker** opens, so **retrieval degrades** to a record-only grounded answer while the sidecar **stays live** (liveness `/health` unaffected). Rebuild Qdrant from corpus if the index is corrupt (§ backup) |
 | Overlay quote not locatable | bbox locator returns none; `extraction.field` low-confidence | Render citation without a box; flag the field for review |
 
 Debugging entry point is always the **correlation ID**: it reconstructs the full
