@@ -1,13 +1,13 @@
 ---
 id: 056c
 title: Local demo geometry provider — make the bbox overlay viewable on localhost
-status: tests-authored
+status: ready-for-merge
 depends_on: [056a, 056b]
 branch: ticket/56c-bbox-demo-provider
 base_branch: main
 test_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests/test_bbox_demo_provider.py -q"
 full_suite_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests -q"
-attempts: 0
+attempts: 1
 ---
 
 ## Description
