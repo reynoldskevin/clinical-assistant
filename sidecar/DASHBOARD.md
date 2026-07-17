@@ -65,6 +65,26 @@ Two layers feed the dashboard:
 | **Degraded rate** | `metadata.degraded` | fraction of turns where a record lookup failed |
 | **Truncated rate** | `metadata.truncated` | fraction of turns that hit the tool-call budget |
 
+## Week-2 panels
+
+The Week-2 dashboard panels (`W2_ARCHITECTURE.md` §7) are **derived from the T57
+structured events** (`sidecar/events.py`), not from new telemetry infra. Each
+event record is one PHI-free JSON object joined by `correlation_id`;
+`panels.aggregate_week2_events` folds a stream of them into the first four panel
+metrics, and `panels.eval_pass_fail_by_category` reads the per-category rollup
+off an `eval.run_all` summary. The mapping from panel to backing event/field:
+
+| Panel | Source event/field | Definition |
+|-------|--------------------|------------|
+| **Document-ingestion count** | `ingestion.complete` | number of documents that finished ingestion |
+| **Extraction field-level pass rate** | `extraction.field` (`outcome`) | fraction of extracted fields with `outcome == "ok"`, plus a per-outcome breakdown |
+| **Retrieval hit rate** | `retrieval.hit` (vs `retrieval.miss`) | `hits / (hits + misses)` across RAG retrievals |
+| **Supervisor routing decisions** | `worker.handoff` (`to`) | count of handoffs keyed by the routed-to worker |
+| **Eval pass/fail per category** | `eval.run` → `run_all` summary `by_category` | passed / total / pass_rate grouped by case category |
+
+All rates are divide-by-zero safe (`0.0` when the denominator is empty), and the
+aggregation is a deterministic, pure-stdlib fold — no network, no new deps.
+
 ## Notes
 
 - **`retries` is currently `0` by design.** The agent is fail-fast: transport-level
