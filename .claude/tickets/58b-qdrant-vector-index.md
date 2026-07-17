@@ -1,7 +1,7 @@
 ---
 id: 058b
 title: Qdrant-backed VectorIndex + build_vector_index factory (lazy, degrading)
-status: ready-for-merge
+status: done
 depends_on: [058a]
 branch: ticket/58b-qdrant-vector-index
 base_branch: ticket/58a-resilience-primitives

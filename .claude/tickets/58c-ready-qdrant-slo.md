@@ -1,7 +1,7 @@
 ---
 id: 058c
 title: /ready Qdrant dependency probe + SLO / resilience baseline numbers
-status: ready-for-merge
+status: done
 depends_on: []
 branch: ticket/58c-ready-qdrant-slo
 base_branch: main

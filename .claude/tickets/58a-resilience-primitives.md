@@ -1,7 +1,7 @@
 ---
 id: 058a
 title: Resilience primitives — circuit breaker + timeout/retry wrapper
-status: ready-for-merge
+status: done
 depends_on: []
 branch: ticket/58a-resilience-primitives
 base_branch: main
