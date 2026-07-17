@@ -43,6 +43,7 @@ class EvalResult:
     name: str
     passed: bool
     failures: list[str]
+    category: str | None = None
 
 
 def load_cases(yaml_text: str) -> list[EvalCase]:
@@ -109,7 +110,7 @@ def run_case(case: EvalCase, runner: Runner) -> EvalResult:
         for grader in case.graders
         if (reason := _grade(grader, text, trace)) is not None
     ]
-    return EvalResult(name=case.name, passed=not failures, failures=failures)
+    return EvalResult(name=case.name, passed=not failures, failures=failures, category=case.category)
 
 
 def run_suite(cases: list[EvalCase], runner: Runner) -> dict:
@@ -153,6 +154,17 @@ def run_all(evals_dir: str, runner: Runner) -> dict:
 
     passed = sum(1 for r in results if r.passed)
     total = len(results)
+
+    by_category: dict[str, dict[str, float]] = {}
+    for result in results:
+        key = result.category if result.category is not None else "uncategorized"
+        bucket = by_category.setdefault(key, {"passed": 0, "total": 0})
+        bucket["total"] += 1
+        if result.passed:
+            bucket["passed"] += 1
+    for bucket in by_category.values():
+        bucket["pass_rate"] = bucket["passed"] / bucket["total"]
+
     summary = {
         "passed": passed,
         "total": total,
@@ -161,6 +173,7 @@ def run_all(evals_dir: str, runner: Runner) -> dict:
         "results": results,
         "ucs": ucs,
         "categories": categories,
+        "by_category": by_category,
     }
     log_event(
         EVAL_RUN,
