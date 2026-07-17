@@ -97,6 +97,7 @@ function modalShown() {
 
 beforeEach(() => {
     global.URL.createObjectURL = jest.fn(function () { return 'blob:preview-xyz'; });
+    delete global.window.OE_AI_AGENT_PDF_RENDER;
 });
 
 describe('agent-widget: [show source] control + modal overlay', () => {
@@ -189,13 +190,35 @@ describe('agent-widget: [show source] control + modal overlay', () => {
         expect(el('.oe-ai-agent-doc-image')).toBeNull();
     });
 
-    test('a non-image (PDF) upload has no [show source] controls even with boxes', async () => {
+    test('a PDF upload renders its page via the renderer seam and enables the source controls', async () => {
+        const pdfRender = jest.fn(function () { return Promise.resolve('blob:pdf-page'); });
+        global.window.OE_AI_AGENT_PDF_RENDER = pdfRender;
+
+        document.body.innerHTML = SCAFFOLD;
+        installFetch(BOXES);
+        loadWidget();
+        upload('report.pdf', 'application/pdf');
+        await flushAll();
+
+        expect(pdfRender).toHaveBeenCalled();
+        const ctl = showSource('chief_concern');
+        expect(ctl).not.toBeNull();
+        click(ctl);
+        expect(modalShown()).toBe(true);
+        expect(el('.oe-ai-agent-source-modal .oe-ai-agent-doc-image').getAttribute('src')).toBe('blob:pdf-page');
+        expect(all('.oe-ai-agent-citation-box').length).toBe(1);
+        // a PDF is rendered, not object-URL'd
+        expect(global.URL.createObjectURL).not.toHaveBeenCalled();
+    });
+
+    test('a PDF upload with no renderer available degrades to no controls', async () => {
+        // no OE_AI_AGENT_PDF_RENDER hook present (cleared in beforeEach)
         document.body.innerHTML = SCAFFOLD;
         installFetch(BOXES);
         loadWidget();
         upload('report.pdf', 'application/pdf');
         await flushAll();
         expect(showSource('chief_concern')).toBeNull();
-        expect(global.URL.createObjectURL).not.toHaveBeenCalled();
+        expect(el('.oe-ai-agent-doc-image')).toBeNull();
     });
 });
