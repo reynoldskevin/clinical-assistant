@@ -1,7 +1,7 @@
 ---
 id: 71
 title: Accordion caret indicator + archive cleared extractions as history items
-status: todo
+status: ready-for-merge
 depends_on: [70]
 branch: ticket/71-accordion-caret-extract-archive
 base_branch: ticket/70-qa-history-accordions
@@ -48,25 +48,25 @@ Implementation notes:
 The live Q&A/extraction render paths are otherwise unchanged.
 
 ## Acceptance criteria
-- [ ] Every archived accordion heading contains a `.oe-ai-agent-turn-caret` element
+- [x] Every archived accordion heading contains a `.oe-ai-agent-turn-caret` element
   as its FIRST child (to the left of the title) plus a `.oe-ai-agent-turn-label`
   holding the heading text; the caret carries `aria-hidden="true"`.
-- [ ] The heading text remains readable via `.oe-ai-agent-turn-label` (the T70
+- [x] The heading text remains readable via `.oe-ai-agent-turn-label` (the T70
   behavior of the question staying visible in the heading is preserved).
-- [ ] Clicking a heading still toggles `aria-expanded` and the body's `hidden`
+- [x] Clicking a heading still toggles `aria-expanded` and the body's `hidden`
   attribute (T70 interaction intact) — now on the caret-bearing heading.
-- [ ] After an extraction has rendered a facts panel, triggering a SUBSEQUENT
+- [x] After an extraction has rendered a facts panel, triggering a SUBSEQUENT
   upload archives that extraction into the history: a `.oe-ai-agent-turn` whose
   `.oe-ai-agent-turn-label` shows the previous upload's FILE NAME and whose
   `.oe-ai-agent-turn-a` body contains the previously-rendered facts (e.g. the
   extracted value text); the live `.oe-ai-agent-extract` box no longer shows it.
-- [ ] The archived extraction turn is collapsed by default (`aria-expanded="false"`,
+- [x] The archived extraction turn is collapsed by default (`aria-expanded="false"`,
   body `hidden`) and expands/collapses on click like a Q&A turn.
-- [ ] The FIRST upload (no prior extraction) archives no extraction item; a prior
+- [x] The FIRST upload (no prior extraction) archives no extraction item; a prior
   extraction box holding only a status note (no `.card` facts panel) is not archived.
-- [ ] Asking a new QUESTION does not archive or clear the extraction panel (only a
+- [x] Asking a new QUESTION does not archive or clear the extraction panel (only a
   new upload does).
-- [ ] No regression: the T70 `agent-widget-history.test.js` and T69
+- [x] No regression: the T70 `agent-widget-history.test.js` and T69
   `agent-widget-clear.test.js` suites stay green; lint clean under `eslint --quiet`.
 
 ## Test plan (orchestrator authors these)

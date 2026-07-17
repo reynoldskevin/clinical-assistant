@@ -43,41 +43,62 @@
     // The question that produced whatever currently sits in the live answer area.
     var currentQuestion = null;
 
+    // Build one collapsed accordion turn: a caret+label heading over a hidden
+    // body that receives all of sourceEl's child nodes (they are MOVED, not
+    // copied). Clicking the heading toggles aria-expanded and the body's hidden
+    // attribute. The turn is appended to the history stack and returned. Shared
+    // by Q&A archiving and extraction archiving.
+    function appendAccordion(headingText, sourceEl) {
+        var turn = document.createElement('div');
+        turn.className = 'oe-ai-agent-turn';
+
+        var heading = document.createElement('button');
+        heading.type = 'button';
+        heading.className = 'oe-ai-agent-turn-q';
+        heading.setAttribute('aria-expanded', 'false');
+
+        // Caret first (visual affordance, hidden from a11y), then the label text.
+        var caret = document.createElement('span');
+        caret.className = 'oe-ai-agent-turn-caret';
+        caret.setAttribute('aria-hidden', 'true');
+        caret.textContent = '▸';
+        heading.appendChild(caret);
+
+        var label = document.createElement('span');
+        label.className = 'oe-ai-agent-turn-label';
+        label.textContent = headingText;
+        heading.appendChild(label);
+
+        var body = document.createElement('div');
+        body.className = 'oe-ai-agent-turn-a';
+        body.setAttribute('hidden', '');
+        while (sourceEl.firstChild) {
+            body.appendChild(sourceEl.firstChild);
+        }
+
+        heading.addEventListener('click', function () {
+            var expanded = heading.getAttribute('aria-expanded') === 'true';
+            heading.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+            if (expanded) {
+                body.setAttribute('hidden', '');
+            } else {
+                body.removeAttribute('hidden');
+            }
+        });
+
+        turn.appendChild(heading);
+        turn.appendChild(body);
+        history.appendChild(turn);
+        return turn;
+    }
+
     // Move the live answer's rendered nodes into a collapsed accordion under its
     // question, then leave the live area empty. No-op archive (just a clear) when
     // there is no tracked question or no content.
     function archiveTurn() {
         var hasContent = answer.childNodes.length > 0 && (answer.textContent || '').trim() !== '';
         if (currentQuestion && hasContent) {
-            var turn = document.createElement('div');
-            turn.className = 'oe-ai-agent-turn';
-
-            var heading = document.createElement('button');
-            heading.type = 'button';
-            heading.className = 'oe-ai-agent-turn-q';
-            heading.setAttribute('aria-expanded', 'false');
-            heading.textContent = currentQuestion;
-
-            var body = document.createElement('div');
-            body.className = 'oe-ai-agent-turn-a';
-            body.setAttribute('hidden', '');
-            while (answer.firstChild) {
-                body.appendChild(answer.firstChild);
-            }
-
-            heading.addEventListener('click', function () {
-                var expanded = heading.getAttribute('aria-expanded') === 'true';
-                heading.setAttribute('aria-expanded', expanded ? 'false' : 'true');
-                if (expanded) {
-                    body.setAttribute('hidden', '');
-                } else {
-                    body.removeAttribute('hidden');
-                }
-            });
-
-            turn.appendChild(heading);
-            turn.appendChild(body);
-            history.appendChild(turn);
+            appendAccordion(currentQuestion, answer);
         }
         answer.textContent = '';
         currentQuestion = null;
@@ -135,6 +156,11 @@
             + 'border:0;padding:6px 10px;font-weight:bold;cursor:pointer;border-radius:4px}'
             + '.oe-ai-agent-turn-q[aria-expanded="true"]{border-bottom:1px solid #d0d0d0;'
             + 'border-radius:4px 4px 0 0}'
+            // Caret to the left of the label; rotates from pointing right (collapsed)
+            // to pointing down (expanded) as the turn opens.
+            + '.oe-ai-agent-turn-caret{display:inline-block;margin-right:0.45em;'
+            + 'transition:transform 0.15s ease}'
+            + '.oe-ai-agent-turn-q[aria-expanded="true"] .oe-ai-agent-turn-caret{transform:rotate(90deg)}'
             + '.oe-ai-agent-turn-a{padding:6px 10px}';
         (document.head || document.documentElement).appendChild(style);
     })();
@@ -521,11 +547,29 @@
             }
         }
 
+        // The file name whose extraction currently sits in the extract box. Set
+        // only when a real facts panel is rendered; used to key its archive turn.
+        var extractedFileName = null;
+
         // Clear the extraction panel and its status.
         function clearExtract() {
             if (extractBox) {
                 extractBox.textContent = '';
             }
+        }
+
+        // If a real facts panel (a '.card') is currently rendered in the extract
+        // box and we know which file produced it, move it into a collapsed history
+        // accordion keyed by that file name BEFORE the box is cleared. A plain
+        // status note (no '.card') and the first-ever upload archive nothing.
+        function archiveExtraction() {
+            if (!extractBox || !extractedFileName) {
+                return;
+            }
+            if (extractBox.querySelector('.card')) {
+                appendAccordion(extractedFileName, extractBox);
+            }
+            extractedFileName = null;
         }
 
         function setExtractNote(text, ok) {
@@ -621,7 +665,7 @@
         // to extract strict facts from the freshly-uploaded document. The pid is
         // sent from the card (as /ask does); the boundary re-checks the token
         // scope on the document read, so it can only reach the patient in context.
-        function extractDocument(documentId, docType) {
+        function extractDocument(documentId, docType, fileName) {
             if (!extractBox || !documentId) {
                 return;
             }
@@ -652,6 +696,9 @@
                     return;
                 }
                 renderExtraction(result.body);
+                // Record the file only now that a real facts panel is on screen,
+                // so a note/failure path leaves nothing to archive on next upload.
+                extractedFileName = fileName || null;
             }).catch(function () {
                 setExtractNote('Stored, but automatic extraction is unavailable right now.', false);
             });
@@ -664,9 +711,11 @@
                 setStatus('Choose a file to upload.', false);
                 return;
             }
-            // Capture the chosen doc_type before reset() clears the form, so the
-            // extraction call uses the type the file was actually filed under.
+            // Capture the chosen doc_type and file name before reset() clears the
+            // form, so the extraction call uses the type the file was filed under
+            // and any archived extraction is keyed by the right name.
             var docType = docTypeSelect.value;
+            var fileName = file.name;
             var payload = new FormData();
             payload.append('csrf_token', csrfToken);
             payload.append('doc_type', docType);
@@ -681,6 +730,9 @@
             // extraction. Only runs once a real upload starts (past the no-file
             // guard above).
             archiveTurn();
+            // Archive any prior rendered extraction into history BEFORE the box is
+            // cleared, so it moves alongside the Q&A turns instead of being wiped.
+            archiveExtraction();
             clearExtract();
 
             fetch(uploadUrl, {
@@ -715,7 +767,7 @@
                 }
                 uploadForm.reset();
                 // Auto-extract strict facts from the stored document (existing or new).
-                extractDocument(data.id, docType);
+                extractDocument(data.id, docType, fileName);
             }).catch(function () {
                 setStatus('Upload failed. Please try again.', false);
             }).finally(function () {
