@@ -1,13 +1,13 @@
 ---
 id: 072b
 title: Clickable [Sn] citations in the answer → source modal
-status: tests-authored
+status: ready-for-merge
 depends_on: [072a, 056h]
 branch: ticket/72b-clickable-citations
 base_branch: ticket/56h-client-pdf-geometry
 test_command: "npx jest interface/modules/custom_modules/oe-module-ai-agent/tests/agent-widget-citations.test.js"
 full_suite_command: "npx jest interface/modules/custom_modules/oe-module-ai-agent"
-attempts: 0
+attempts: 1
 ---
 
 ## Description
