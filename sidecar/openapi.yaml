@@ -62,6 +62,72 @@ paths:
                   checks:
                     type: object
 
+  /metrics:
+    get:
+      summary: Week-2 telemetry snapshot
+      description: >
+        On-demand snapshot of the Week-2 dashboard panels (ingestion,
+        extraction, retrieval, routing), the extraction-failure alert, and the
+        event-buffer window, folded from the bounded in-memory event buffer.
+        Unauthenticated like /health and /ready; never 500s (an empty buffer
+        yields zeros).
+      responses:
+        "200":
+          description: Week-2 telemetry snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  panels:
+                    type: object
+                    properties:
+                      ingestion_count:
+                        type: integer
+                      extraction:
+                        type: object
+                        properties:
+                          total:
+                            type: integer
+                          ok:
+                            type: integer
+                          field_pass_rate:
+                            type: number
+                          by_outcome:
+                            type: object
+                      retrieval:
+                        type: object
+                        properties:
+                          hits:
+                            type: integer
+                          misses:
+                            type: integer
+                          hit_rate:
+                            type: number
+                      routing:
+                        type: object
+                  alerts:
+                    type: object
+                    properties:
+                      extraction_failure:
+                        type: object
+                        properties:
+                          firing:
+                            type: boolean
+                          rate:
+                            type: number
+                          failed:
+                            type: integer
+                          total:
+                            type: integer
+                  window:
+                    type: object
+                    properties:
+                      events:
+                        type: integer
+                      buffer_max:
+                        type: integer
+
   /ask:
     post:
       summary: Ask (buffered)

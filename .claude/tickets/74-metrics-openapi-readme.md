@@ -1,7 +1,7 @@
 ---
 id: 074
 title: Document GET /metrics in the OpenAPI spec + README (+ Postman)
-status: tests-authored
+status: ready-for-merge
 depends_on: []
 branch: ticket/74-metrics-openapi-readme
 base_branch: main
