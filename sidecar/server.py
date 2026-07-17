@@ -722,6 +722,7 @@ def make_handler(
                     os.environ.get("ANTHROPIC_API_KEY"),
                     os.environ.get("BRAINTRUST_API_KEY"),
                     urllib.request.urlopen,
+                    qdrant_url=os.environ.get("QDRANT_URL"),
                 )
                 self._send_json(status, body)
                 return

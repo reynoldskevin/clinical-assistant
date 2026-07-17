@@ -20,6 +20,12 @@ import urllib.error
 import urllib.request
 from typing import Callable, Optional
 
+# Sentinel distinguishing an OMITTED qdrant_url (old callers -> no qdrant check)
+# from a supplied-but-falsy value (None/"" -> a qdrant check reporting
+# not_configured). None/"" are meaningful "configured-but-empty" states, so they
+# cannot double as the "argument omitted" marker.
+_UNSET = object()
+
 
 def liveness() -> dict:
     """Unconditional liveness payload — if this runs, the process is alive."""
@@ -38,8 +44,14 @@ def http_reachable(url, opener=urllib.request.urlopen, headers=None, timeout=3.0
         return False, "unreachable"
 
 
-def build_readiness_checks(summary_url, anthropic_key, braintrust_key, opener) -> dict:
-    """Build zero-arg dependency checks, each returning (ok, detail)."""
+def build_readiness_checks(summary_url, anthropic_key, braintrust_key, opener, qdrant_url=_UNSET) -> dict:
+    """Build zero-arg dependency checks, each returning (ok, detail).
+
+    ``qdrant_url`` is opt-in via a sentinel default: an OMITTED argument adds no
+    ``qdrant`` check (so existing three-dependency callers are unchanged), a
+    supplied-but-falsy value reports ``not_configured`` (like ``observability``),
+    and a truthy value is probed like the other boundaries.
+    """
     def openemr() -> tuple[Optional[bool], str]:
         if not summary_url:
             return False, "not_configured"
@@ -63,7 +75,21 @@ def build_readiness_checks(summary_url, anthropic_key, braintrust_key, opener) -
         def observability() -> tuple[Optional[bool], str]:
             return (None, "not_configured")
 
-    return {"openemr": openemr, "llm": llm, "observability": observability}
+    checks = {"openemr": openemr, "llm": llm, "observability": observability}
+
+    if qdrant_url is not _UNSET:
+        if qdrant_url:
+            probe_url = qdrant_url.rstrip("/") + "/healthz"
+
+            def qdrant() -> tuple[Optional[bool], str]:
+                return http_reachable(probe_url, opener)
+        else:
+            def qdrant() -> tuple[Optional[bool], str]:
+                return (None, "not_configured")
+
+        checks["qdrant"] = qdrant
+
+    return checks
 
 
 def evaluate_readiness(checks) -> tuple[int, dict]:
@@ -81,8 +107,12 @@ def evaluate_readiness(checks) -> tuple[int, dict]:
     return (200 if ready else 503, {"ready": ready, "checks": results})
 
 
-def ready_response(summary_url, anthropic_key, braintrust_key, opener) -> tuple[int, dict]:
-    """Build + evaluate the readiness checks in one call."""
+def ready_response(summary_url, anthropic_key, braintrust_key, opener, qdrant_url=_UNSET) -> tuple[int, dict]:
+    """Build + evaluate the readiness checks in one call.
+
+    ``qdrant_url`` threads through with the same sentinel default, so old 4-arg
+    callers are unaffected.
+    """
     return evaluate_readiness(
-        build_readiness_checks(summary_url, anthropic_key, braintrust_key, opener)
+        build_readiness_checks(summary_url, anthropic_key, braintrust_key, opener, qdrant_url=qdrant_url)
     )
