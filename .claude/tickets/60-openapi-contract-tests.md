@@ -1,7 +1,7 @@
 ---
 id: 060
 title: OpenAPI 3.0 spec + contract tests + updated Postman collection
-status: ready-for-merge
+status: done
 depends_on: [54]
 branch: ticket/60-openapi-contract-tests
 base_branch: main

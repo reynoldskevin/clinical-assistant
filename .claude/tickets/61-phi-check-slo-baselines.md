@@ -1,7 +1,7 @@
 ---
 id: 061
 title: Finalize W2_ARCHITECTURE.md + PHI-detection CI check + SLO/baseline numbers
-status: ready-for-merge
+status: done
 depends_on: []
 branch: ticket/61-phi-check-slo-baselines
 base_branch: main
