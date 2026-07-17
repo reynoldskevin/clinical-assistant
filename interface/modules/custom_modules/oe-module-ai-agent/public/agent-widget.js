@@ -642,44 +642,69 @@
                 }
             });
 
-            var dl = document.createElement('dl');
-            dl.className = 'row mb-0';
-            keys.forEach(function (k) {
-                var dt = document.createElement('dt');
-                dt.className = 'col-5 text-muted text-truncate';
-                dt.textContent = humanize(k);
-                var dd = document.createElement('dd');
-                dd.className = 'col-7 mb-1';
-                dd.textContent = valueText(fact[k]);
-                dl.appendChild(dt);
-                dl.appendChild(dd);
-            });
-            panel.appendChild(dl);
-
-            // Citation bounding-box overlay: when the extract response carries
-            // page-pixel citation boxes (the T56a contract) AND the upload was an
-            // image we can preview, render the document image with one absolutely-
-            // positioned box per citation. Boxes are placed as percentages of the
-            // page so they scale with the rendered image. Built with createElement
-            // only — no innerHTML — so nothing is interpreted as HTML.
-            if (previewUrl
-                && Array.isArray(data.citation_boxes)
-                && data.citation_boxes.length
+            // Click-to-reveal citation source (T56d). ``data.citation_boxes`` is a
+            // PER-FIELD map ``{field: [ {x,y,w,h} ]}``. When the upload was an image
+            // we can preview and the map is a non-empty object with page dimensions,
+            // each cited fact becomes a clickable control that reveals a single,
+            // otherwise-hidden document preview overlaying ONLY that fact's box(es).
+            // The preview + overlay layer are built first so the dl's click handlers
+            // (attached below) can reference them.
+            var cites = data.citation_boxes;
+            var hasCites = previewUrl
+                && cites
+                && typeof cites === 'object'
+                && Object.keys(cites).length
                 && data.page_width
-                && data.page_height) {
-                var overlay = document.createElement('div');
-                overlay.style.position = 'relative';
-                overlay.style.marginTop = '0.5em';
-                overlay.style.maxWidth = '360px';
+                && data.page_height;
+
+            var previewContainer = null;
+            var overlayLayer = null;
+            var activeField = null;
+
+            if (hasCites) {
+                previewContainer = document.createElement('div');
+                previewContainer.className = 'oe-ai-agent-doc-preview';
+                previewContainer.style.display = 'none';
+                previewContainer.style.marginTop = '0.5em';
+                previewContainer.style.maxWidth = '360px';
+
+                var frame = document.createElement('div');
+                frame.style.position = 'relative';
 
                 var img = document.createElement('img');
                 img.className = 'oe-ai-agent-doc-image';
                 img.setAttribute('src', previewUrl);
                 img.style.width = '100%';
                 img.style.display = 'block';
-                overlay.appendChild(img);
+                frame.appendChild(img);
 
-                data.citation_boxes.forEach(function (box) {
+                overlayLayer = document.createElement('div');
+                overlayLayer.style.position = 'absolute';
+                overlayLayer.style.left = '0';
+                overlayLayer.style.top = '0';
+                overlayLayer.style.width = '100%';
+                overlayLayer.style.height = '100%';
+                frame.appendChild(overlayLayer);
+
+                previewContainer.appendChild(frame);
+            }
+
+            function citedField(k) {
+                return hasCites
+                    && Object.prototype.hasOwnProperty.call(cites, k)
+                    && Array.isArray(cites[k])
+                    && cites[k].length;
+            }
+
+            function clearOverlay() {
+                while (overlayLayer.firstChild) {
+                    overlayLayer.removeChild(overlayLayer.firstChild);
+                }
+            }
+
+            function drawField(k) {
+                clearOverlay();
+                cites[k].forEach(function (box) {
                     var boxEl = document.createElement('div');
                     boxEl.className = 'oe-ai-agent-citation-box';
                     boxEl.style.position = 'absolute';
@@ -689,10 +714,47 @@
                     boxEl.style.height = (box.h / data.page_height * 100) + '%';
                     boxEl.style.border = '2px solid #d9534f';
                     boxEl.style.background = 'rgba(217,83,79,0.12)';
-                    overlay.appendChild(boxEl);
+                    overlayLayer.appendChild(boxEl);
                 });
+            }
 
-                panel.appendChild(overlay);
+            function toggleField(k) {
+                if (activeField === k) {
+                    previewContainer.style.display = 'none';
+                    clearOverlay();
+                    activeField = null;
+                    return;
+                }
+                drawField(k);
+                previewContainer.style.display = '';
+                activeField = k;
+            }
+
+            var dl = document.createElement('dl');
+            dl.className = 'row mb-0';
+            keys.forEach(function (k) {
+                var dt = document.createElement('dt');
+                dt.className = 'col-5 text-muted text-truncate';
+                dt.textContent = humanize(k);
+                var dd = document.createElement('dd');
+                dd.className = 'col-7 mb-1';
+                dd.textContent = valueText(fact[k]);
+                if (citedField(k)) {
+                    dd.className += ' oe-ai-agent-fact-cite';
+                    dd.setAttribute('data-field', k);
+                    dd.setAttribute('role', 'button');
+                    dd.style.cursor = 'pointer';
+                    dd.addEventListener('click', function () {
+                        toggleField(k);
+                    });
+                }
+                dl.appendChild(dt);
+                dl.appendChild(dd);
+            });
+            panel.appendChild(dl);
+
+            if (previewContainer) {
+                panel.appendChild(previewContainer);
             }
 
             var unsupported = data.unsupported_fields || [];

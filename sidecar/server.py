@@ -641,16 +641,19 @@ def default_extract_builder(
         # Optional citation overlay: when a word-geometry provider is wired,
         # locate every non-empty grounded fact VALUE on the page (comprehensive
         # provenance) and carry the covering box(es) + page dimensions back for
-        # the card to draw. Value strings (not just the single source citation)
-        # so the overlay highlights each extracted value.
+        # the card to draw. ``citation_boxes`` is a PER-FIELD map
+        # ``{field: [boxes]}`` (T56d) so a fact can be clicked to reveal only its
+        # own source; a field appears only if its value located ≥1 box.
         if word_geometry is not None:
             geom = word_geometry(pid, document_id, doc_type)
             if geom:
-                boxes: list[dict[str, int]] = []
-                for value in result.fact.model_dump().values():
+                citation_boxes: dict[str, list[dict[str, int]]] = {}
+                for field, value in result.fact.model_dump().items():
                     if isinstance(value, str) and value.strip():
-                        boxes.extend(locate_citation_boxes(geom["words"], value))
-                body["citation_boxes"] = boxes
+                        field_boxes = locate_citation_boxes(geom["words"], value)
+                        if field_boxes:
+                            citation_boxes[field] = field_boxes
+                body["citation_boxes"] = citation_boxes
                 body["page_width"] = geom["page_width"]
                 body["page_height"] = geom["page_height"]
 

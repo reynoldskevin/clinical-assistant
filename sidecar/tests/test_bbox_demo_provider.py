@@ -96,12 +96,12 @@ def test_extract_locates_boxes_for_every_string_fact_value(monkeypatch):
     extract = server.default_extract_builder("http://oe/summary.php", None, word_geometry=geometry)
     body = extract(1, "jwt", 5, "lab_pdf")
 
-    # "Penicillin" and "Lisinopril 10 mg" both live in the geometry -> boxes for
-    # each grounded value (comprehensive provenance), not just one citation.
-    assert body["citation_boxes"], "no citation boxes computed"
-    penicillin = locate_citation_boxes(geom["words"], "Penicillin")
-    lisinopril = locate_citation_boxes(geom["words"], "Lisinopril 10 mg")
-    for expected in penicillin + lisinopril:
-        assert expected in body["citation_boxes"]
+    # citation_boxes is a per-field map {field: [boxes]} (T56d) — one entry per
+    # fact field whose value locates on the page, so a fact can be clicked to
+    # reveal only its own source.
+    cb = body["citation_boxes"]
+    assert isinstance(cb, dict) and cb
+    assert cb["test_name"] == locate_citation_boxes(geom["words"], "Penicillin")
+    assert cb["value"] == locate_citation_boxes(geom["words"], "Lisinopril 10 mg")
     assert body["page_width"] == geom["page_width"]
     assert body["page_height"] == geom["page_height"]

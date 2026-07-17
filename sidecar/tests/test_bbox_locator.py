@@ -112,7 +112,9 @@ def test_extract_response_carries_citation_boxes_when_geometry_is_provided(monke
     extract = server.default_extract_builder("http://oe/summary.php", None, word_geometry=geometry)
     body = extract(1, "jwt", 5, "lab_pdf")
 
-    assert body["citation_boxes"] == [{"x": 10, "y": 100, "w": 100, "h": 20}]
+    # citation_boxes is a per-field map {field: [boxes]} (T56d). The only string
+    # field on this fake fact is source_citation, which locates "HbA1c 7.4".
+    assert body["citation_boxes"] == {"source_citation": [{"x": 10, "y": 100, "w": 100, "h": 20}]}
     assert body["page_width"] == 400
     assert body["page_height"] == 600
     # sanity: it's JSON-serializable (crosses the wire to the card)
