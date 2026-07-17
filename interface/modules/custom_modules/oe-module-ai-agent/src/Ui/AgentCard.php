@@ -40,6 +40,12 @@ final class AgentCard
         $mtime = @filemtime(__DIR__ . '/../../public/agent-widget.js');
         $version = (string) ($mtime !== false ? $mtime : '1');
 
+        // The pdf.js glue defines window.OE_AI_AGENT_PDF_RENDER, which the widget
+        // consults to preview PDF uploads. It is loaded (cache-busted) BEFORE the
+        // widget so the hook is present by the time the widget runs.
+        $pdfMtime = @filemtime(__DIR__ . '/../../public/pdf-preview.js');
+        $pdfVersion = (string) ($pdfMtime !== false ? $pdfMtime : '1');
+
         // $pid is a native int; emitting it directly means the attribute value can
         // only ever be an integer — no untrusted string ever reaches the markup.
         return <<<HTML
@@ -66,6 +72,7 @@ final class AgentCard
         </form>
         <div class="oe-ai-agent-extract mt-2" role="status" aria-live="polite"></div>
     </div>
+    <script src="../../../interface/modules/custom_modules/oe-module-ai-agent/public/pdf-preview.js?v={$pdfVersion}"></script>
     <script src="../../../interface/modules/custom_modules/oe-module-ai-agent/public/agent-widget.js?v={$version}"></script>
 </div>
 HTML;

@@ -1,13 +1,13 @@
 ---
 id: 056g
 title: Render uploaded PDFs in the card (pdf.js) so lab overlays work
-status: tests-authored
+status: ready-for-merge
 depends_on: [056e, 056f]
 branch: ticket/56g-pdf-render
 base_branch: ticket/56f-lab-geometry
 test_command: "npx jest interface/modules/custom_modules/oe-module-ai-agent/tests/agent-widget-bbox.test.js"
 full_suite_command: "npx jest interface/modules/custom_modules/oe-module-ai-agent"
-attempts: 0
+attempts: 1
 ---
 
 ## Description
