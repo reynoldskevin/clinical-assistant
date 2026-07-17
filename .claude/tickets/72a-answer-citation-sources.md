@@ -1,13 +1,13 @@
 ---
 id: 072a
 title: Return per-marker citation sources in the /ask response
-status: tests-authored
+status: ready-for-merge
 depends_on: []
 branch: ticket/72a-answer-citation-sources
 base_branch: main
 test_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests/test_citation_sources.py -q"
 full_suite_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests -q"
-attempts: 0
+attempts: 1
 ---
 
 ## Description
