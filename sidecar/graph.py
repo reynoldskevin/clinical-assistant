@@ -110,6 +110,10 @@ class GraphState(TypedDict, total=False):
     worker_results: Annotated[list[dict], operator.add]
     answer: str
     verdict: str
+    # Prior-turn messages for multi-turn context. A plain last-value channel
+    # (NOT a reducer): seeded once in initial_state, read by the finalize seam,
+    # never mutated by nodes.
+    history: list
 
 
 def route_workers(question: str) -> list[str]:
@@ -320,12 +324,20 @@ def run_supervisor(
     router: Callable[[str], list[str]] = route_workers,
     finalizer: Optional[Callable[[GraphState], str]] = None,
     gate: Any = None,
+    store: Any = None,
+    conversation_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Build the supervisor graph and run one turn, returning the final state.
 
     Generates a correlation id when none is given. All accumulating channels are
     initialized empty so the reducers append onto a known base. The returned
     dict exposes ``worker_results``, ``routing_log``, ``answer``, and ``verdict``.
+
+    Multi-turn: when both ``store`` and a non-empty ``conversation_id`` are
+    given, prior turns for this ``pid``-scoped conversation are loaded and
+    exposed to the finalize seam via the ``history`` channel, then this turn's
+    ``user`` + ``assistant`` messages are appended and persisted. Without a store
+    (or with an empty conversation id) the graph stays exactly stateless.
     """
     cid = correlation_id or factory.new_correlation_id()
     app = build_supervisor_graph(
@@ -335,6 +347,8 @@ def run_supervisor(
         finalizer=finalizer,
         gate=gate,
     )
+    persisting = store is not None and isinstance(conversation_id, str) and conversation_id != ""
+    prior: list = store.history(conversation_id, pid) or [] if persisting else []
     initial_state: GraphState = {
         "question": question,
         "pid": pid,
@@ -343,8 +357,21 @@ def run_supervisor(
         "routing_log": [],
         "worker_results": [],
         "answer": "",
+        "history": prior,
     }
-    return dict(app.invoke(initial_state))
+    state = dict(app.invoke(initial_state))
+    if persisting:
+        new_history = prior + [
+            {"role": "user", "content": question},
+            {"role": "assistant", "content": state.get("answer", "")},
+        ]
+        store.remember(conversation_id, pid, new_history)
+        state["history"] = new_history
+    else:
+        # Stateless path: do not expose a populated history. The backward-compat
+        # test asserts state.get("history", []) == [].
+        state["history"] = []
+    return state
 
 
 # --- production adapters (thin; not under test, but required for real wiring) --
