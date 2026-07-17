@@ -1,7 +1,7 @@
 ---
 id: 70
 title: Q&A history — collapsible accordions instead of clearing prior answers
-status: ready-for-merge
+status: done
 depends_on: [69]
 branch: ticket/70-qa-history-accordions
 base_branch: main

@@ -1,7 +1,7 @@
 ---
 id: 71
 title: Accordion caret indicator + archive cleared extractions as history items
-status: ready-for-merge
+status: done
 depends_on: [70]
 branch: ticket/71-accordion-caret-extract-archive
 base_branch: ticket/70-qa-history-accordions
