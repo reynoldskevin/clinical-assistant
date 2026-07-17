@@ -1,7 +1,7 @@
 ---
 id: 055
 title: Multi-turn / follow-up on the supervisor graph (reuse ConversationStore)
-status: ready-for-merge
+status: done
 depends_on: []
 branch: ticket/55-graph-multi-turn
 base_branch: main
