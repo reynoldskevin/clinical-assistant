@@ -1,7 +1,7 @@
 ---
 id: 056c
 title: Local demo geometry provider — make the bbox overlay viewable on localhost
-status: ready-for-merge
+status: done
 depends_on: [056a, 056b]
 branch: ticket/56c-bbox-demo-provider
 base_branch: main

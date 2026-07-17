@@ -1,7 +1,7 @@
 ---
 id: 056f
 title: Lab-report demo geometry — citation boxes for lab extractions
-status: ready-for-merge
+status: done
 depends_on: [056c, 056d]
 branch: ticket/56f-lab-geometry
 base_branch: ticket/56e-source-modal

@@ -1,7 +1,7 @@
 ---
 id: 056e
 title: Citation source — small [show source] control + modal overlay
-status: ready-for-merge
+status: done
 depends_on: [056d]
 branch: ticket/56e-source-modal
 base_branch: ticket/56d-click-to-reveal-citation

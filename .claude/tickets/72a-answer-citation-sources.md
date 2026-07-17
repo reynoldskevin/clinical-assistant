@@ -1,7 +1,7 @@
 ---
 id: 072a
 title: Return per-marker citation sources in the /ask response
-status: ready-for-merge
+status: done
 depends_on: []
 branch: ticket/72a-answer-citation-sources
 base_branch: main

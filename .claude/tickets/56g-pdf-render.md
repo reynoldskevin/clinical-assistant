@@ -1,7 +1,7 @@
 ---
 id: 056g
 title: Render uploaded PDFs in the card (pdf.js) so lab overlays work
-status: ready-for-merge
+status: done
 depends_on: [056e, 056f]
 branch: ticket/56g-pdf-render
 base_branch: ticket/56f-lab-geometry

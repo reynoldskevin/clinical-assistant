@@ -1,7 +1,7 @@
 ---
 id: 072b
 title: Clickable [Sn] citations in the answer → source modal
-status: ready-for-merge
+status: done
 depends_on: [072a, 056h]
 branch: ticket/72b-clickable-citations
 base_branch: ticket/56h-client-pdf-geometry

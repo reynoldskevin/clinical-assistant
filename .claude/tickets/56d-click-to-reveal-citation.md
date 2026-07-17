@@ -1,7 +1,7 @@
 ---
 id: 056d
 title: Click-to-reveal per-fact citation source (rework the always-on overlay)
-status: ready-for-merge
+status: done
 depends_on: [056a, 056b, 056c]
 branch: ticket/56d-click-to-reveal-citation
 base_branch: ticket/56c-bbox-demo-provider

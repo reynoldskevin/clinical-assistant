@@ -1,7 +1,7 @@
 ---
 id: 056h
 title: Client-side PDF citation geometry from the pdf.js text layer
-status: ready-for-merge
+status: done
 depends_on: [056g]
 branch: ticket/56h-client-pdf-geometry
 base_branch: ticket/56g-pdf-render
