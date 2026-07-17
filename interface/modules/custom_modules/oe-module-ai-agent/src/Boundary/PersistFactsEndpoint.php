@@ -23,12 +23,14 @@ namespace OpenEMR\Modules\AiAgent\Boundary;
 
 use OpenEMR\Modules\AiAgent\Persistence\IntakeFactPersister;
 use OpenEMR\Modules\AiAgent\Persistence\LabFactPersister;
+use OpenEMR\Modules\AiAgent\Persistence\MedicationFactPersister;
 
 final class PersistFactsEndpoint
 {
     public function __construct(
         private LabFactPersister $lab,
         private IntakeFactPersister $intake,
+        private MedicationFactPersister $medication,
     ) {
     }
 
@@ -56,7 +58,7 @@ final class PersistFactsEndpoint
         ?string $createdByName = null,
     ): array {
         // Reject an unknown doc_type before any write (fail closed).
-        if ($docType !== 'lab_pdf' && $docType !== 'intake_form') {
+        if ($docType !== 'lab_pdf' && $docType !== 'intake_form' && $docType !== 'med_list') {
             throw new \DomainException('unsupported doc_type');
         }
 
@@ -66,6 +68,12 @@ final class PersistFactsEndpoint
             if ($result['filed'] > 0) {
                 $filed[] = ['fact_type' => 'lab_result', 'count' => $result['filed']];
             }
+            $superseded = $result['superseded'];
+        } elseif ($docType === 'med_list') {
+            $result = $this->medication->persist($pid, $documentId, $extractionRunId, $createdBy, $fact, $createdByName);
+            $filed = $result['filed'] > 0
+                ? [['fact_type' => 'medication', 'count' => $result['filed']]]
+                : [];
             $superseded = $result['superseded'];
         } else {
             $result = $this->intake->persist($pid, $documentId, $extractionRunId, $createdBy, $fact, $createdByName);

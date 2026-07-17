@@ -1,7 +1,7 @@
 ---
 id: 075b
 title: med_list persistence — MedicationFactPersister into the Medications panel
-status: tests-authored
+status: ready-for-merge
 depends_on: []
 branch: ticket/75b-medlist-persister
 base_branch: main
