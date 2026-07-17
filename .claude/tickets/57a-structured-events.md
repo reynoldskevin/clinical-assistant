@@ -1,13 +1,13 @@
 ---
 id: 057a
 title: Week-2 structured log events (event spine + emission wiring)
-status: tests-authored
+status: ready-for-merge
 depends_on: []
 branch: ticket/57a-structured-events
 base_branch: main
 test_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests/test_events.py -q"
 full_suite_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests -q"
-attempts: 0
+attempts: 1
 ---
 
 ## Description

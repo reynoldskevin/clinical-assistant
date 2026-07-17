@@ -33,6 +33,13 @@ from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, ConfigDict, Field
 
 import factory
+from events import (
+    EXTRACTION_FIELD,
+    RETRIEVAL_HIT,
+    RETRIEVAL_MISS,
+    WORKER_HANDOFF,
+    log_event,
+)
 from verification import VerificationGate
 
 # Worker node names, in the canonical order the supervisor visits them
@@ -178,11 +185,13 @@ def _supervisor_node(state: GraphState, router: Callable[[str], list[str]]) -> d
     route = state.get("route") or router(state["question"])
     done = {wr["worker"] for wr in state.get("worker_results", [])}
     nxt = next((w for w in route if w not in done), "finalize")
+    cid = state["correlation_id"]
     entry = {
         "from": "supervisor",
         "to": nxt,
-        "correlation_id": state["correlation_id"],
+        "correlation_id": cid,
     }
+    log_event(WORKER_HANDOFF, cid, from_="supervisor", to=nxt)
     return {"route": route, "_next": nxt, "routing_log": [entry]}
 
 
@@ -200,13 +209,26 @@ def _worker_node(
         pid=state["pid"],
         correlation_id=cid,
     )
+    citations = list(result["citations"])
+    payload = dict(result["payload"])
     wr = WorkerResult(
         worker=worker,
         kind=kind,
         correlation_id=cid,
-        citations=list(result["citations"]),
-        payload=dict(result["payload"]),
+        citations=citations,
+        payload=payload,
     )
+
+    if worker == _EVIDENCE:
+        if citations:
+            log_event(RETRIEVAL_HIT, cid, count=len(citations))
+        else:
+            log_event(RETRIEVAL_MISS, cid)
+    elif worker == _INTAKE:
+        for field_name, outcome in payload.get("field_outcomes", {}).items():
+            log_event(EXTRACTION_FIELD, cid, field=field_name, outcome=outcome)
+
+    log_event(WORKER_HANDOFF, cid, from_=worker, to="supervisor")
     return {
         "worker_results": [wr.model_dump()],
         "routing_log": [{"from": worker, "to": "supervisor", "correlation_id": cid}],

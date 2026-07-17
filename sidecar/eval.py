@@ -17,6 +17,9 @@ from typing import Callable
 
 import yaml
 
+import factory
+from events import EVAL_RUN, log_event
+
 Runner = Callable[[str, int], tuple[str, dict]]
 
 
@@ -150,7 +153,7 @@ def run_all(evals_dir: str, runner: Runner) -> dict:
 
     passed = sum(1 for r in results if r.passed)
     total = len(results)
-    return {
+    summary = {
         "passed": passed,
         "total": total,
         "pass_rate": (passed / total) if total else 0.0,
@@ -159,6 +162,13 @@ def run_all(evals_dir: str, runner: Runner) -> dict:
         "ucs": ucs,
         "categories": categories,
     }
+    log_event(
+        EVAL_RUN,
+        factory.new_correlation_id(),
+        passed=summary["passed"],
+        total=summary["total"],
+    )
+    return summary
 
 
 def gate(summary: dict, threshold: float) -> bool:
