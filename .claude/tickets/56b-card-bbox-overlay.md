@@ -1,7 +1,7 @@
 ---
 id: 056b
 title: Card image preview + citation bounding-box overlay render
-status: ready-for-merge
+status: done
 depends_on: [056a]
 branch: ticket/56b-card-bbox-overlay
 base_branch: ticket/56a-citation-bbox-locator

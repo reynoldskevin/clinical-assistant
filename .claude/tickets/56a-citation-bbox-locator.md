@@ -1,7 +1,7 @@
 ---
 id: 056a
 title: Citation bounding-box locator + extract-response overlay contract
-status: ready-for-merge
+status: done
 depends_on: []
 branch: ticket/56a-citation-bbox-locator
 base_branch: main
