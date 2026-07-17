@@ -1,13 +1,13 @@
 ---
 id: 060
 title: OpenAPI 3.0 spec + contract tests + updated Postman collection
-status: tests-authored
+status: ready-for-merge
 depends_on: [54]
 branch: ticket/60-openapi-contract-tests
 base_branch: main
 test_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests/test_openapi_spec.py -q"
 full_suite_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests -q"
-attempts: 0
+attempts: 1
 ---
 
 ## Description

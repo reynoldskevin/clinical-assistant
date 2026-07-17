@@ -1,0 +1,234 @@
+# OpenEMR AI Clinical Co-Pilot — sidecar HTTP API.
+#
+# Single published description of the sidecar's HTTP surface. The component
+# schemas below mirror the canonical Pydantic envelope contracts in
+# `contracts.py` (AskRequest/AskResponse/ExtractRequest/ExtractResponse):
+# their property names, required sets, and the ExtractRequest.doc_type enum
+# are held identical to the models by the T60 contract tests.
+openapi: "3.0.3"
+info:
+  title: OpenEMR AI Clinical Co-Pilot — Sidecar API
+  version: "1.0.0"
+  description: >
+    Read-only real-time Clinical Co-Pilot sidecar. Buffered and streaming
+    grounded question answering plus document fact extraction, plus liveness
+    and readiness probes.
+
+paths:
+  /health:
+    get:
+      summary: Liveness probe
+      description: Is the sidecar process alive. Always 200 if the process is up.
+      responses:
+        "200":
+          description: Process is alive.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  service:
+                    type: string
+
+  /ready:
+    get:
+      summary: Readiness probe
+      description: >
+        Probes upstream dependencies (OpenEMR, the LLM provider, observability).
+        200 when ready, 503 otherwise; body lists each dependency's status.
+      responses:
+        "200":
+          description: All dependencies reachable.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ready:
+                    type: boolean
+                  checks:
+                    type: object
+        "503":
+          description: One or more dependencies unavailable.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ready:
+                    type: boolean
+                  checks:
+                    type: object
+
+  /ask:
+    post:
+      summary: Ask (buffered)
+      description: >
+        Ask a grounded question about a patient and receive a single buffered
+        answer. The JWT is re-verified and must match the requested pid.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AskRequest"
+      responses:
+        "200":
+          description: Grounded answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AskResponse"
+        "400":
+          description: Malformed request body.
+        "401":
+          description: Missing or invalid bearer token.
+        "502":
+          description: Upstream LLM provider error.
+
+  /ask/stream:
+    post:
+      summary: Ask (streaming SSE)
+      description: >
+        Same as the buffered ask, but the answer is streamed back as
+        Server-Sent Events so tokens arrive incrementally.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AskRequest"
+      responses:
+        "200":
+          description: Server-Sent Event stream of answer tokens.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "400":
+          description: Malformed request body.
+        "401":
+          description: Missing or invalid bearer token.
+        "502":
+          description: Upstream LLM provider error.
+
+  /extract:
+    post:
+      summary: Extract structured facts from a document
+      description: >
+        Extract validated, grounded structured facts from a stored patient
+        document. The JWT is re-verified and must match the requested pid.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExtractRequest"
+      responses:
+        "200":
+          description: Extracted fact envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExtractResponse"
+        "400":
+          description: Malformed request body.
+        "401":
+          description: Missing or invalid bearer token.
+        "422":
+          description: Unprocessable request (invalid pid/document_id/doc_type).
+        "502":
+          description: Upstream LLM provider error.
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # Mirrors contracts.AskRequest.model_json_schema().
+    AskRequest:
+      type: object
+      properties:
+        pid:
+          type: integer
+        question:
+          type: string
+        conversation_id:
+          type: string
+          nullable: true
+      required:
+        - pid
+        - question
+
+    # Mirrors contracts.AskResponse.model_json_schema().
+    AskResponse:
+      type: object
+      properties:
+        answer:
+          type: string
+        correlation_id:
+          type: string
+      required:
+        - answer
+        - correlation_id
+
+    # Mirrors contracts.ExtractRequest.model_json_schema().
+    ExtractRequest:
+      type: object
+      properties:
+        pid:
+          type: integer
+        document_id:
+          type: integer
+        doc_type:
+          type: string
+          enum:
+            - lab_pdf
+            - intake_form
+      required:
+        - pid
+        - document_id
+        - doc_type
+
+    # Mirrors contracts.ExtractResponse.model_json_schema().
+    ExtractResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        doc_type:
+          type: string
+        confidence:
+          type: number
+        low_confidence:
+          type: boolean
+        unsupported_fields:
+          type: array
+          items:
+            type: string
+        fact:
+          type: object
+        correlation_id:
+          type: string
+        identity_check:
+          type: object
+          nullable: true
+      required:
+        - ok
+        - doc_type
+        - confidence
+        - low_confidence
+        - unsupported_fields
+        - fact
+        - correlation_id

@@ -213,6 +213,27 @@
         },
         "description": "Same as the buffered ask, but the sidecar streams the answer back as Server-Sent Events (SSE) so tokens arrive incrementally."
       }
+    },
+    {
+      "name": "6. Extract document facts",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{jwt}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"pid\": {{pid}}, \"document_id\": 1, \"doc_type\": \"lab_pdf\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{sidecar_base_url}}/extract",
+          "host": ["{{sidecar_base_url}}"],
+          "path": ["extract"]
+        },
+        "description": "Extract validated, grounded structured facts from a stored patient document. The sidecar re-verifies the JWT and calls back into the OpenEMR chart-read boundary to fetch the document pid-scoped."
+      }
     }
   ]
 }
