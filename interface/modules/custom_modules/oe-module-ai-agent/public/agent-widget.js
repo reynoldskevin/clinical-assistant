@@ -336,6 +336,183 @@
         return { event: event, data: data };
     }
 
+    // Lazily-built citation-source modal shared by all [Sn] controls. Same class
+    // contract as the extraction modal (T56e): a fixed full-viewport backdrop
+    // ``div.oe-ai-agent-source-modal`` (hidden by default, flex-centered) with a
+    // content box, a ``button.oe-ai-agent-source-close``, and backdrop-click to
+    // dismiss. A single body element receives the active citation's source.
+    var citationModal = null;
+    var citationModalBody = null;
+
+    function ensureCitationModal() {
+        if (citationModal) {
+            return;
+        }
+        var modal = document.createElement('div');
+        modal.className = 'oe-ai-agent-source-modal';
+        modal.style.display = 'none';
+        modal.style.position = 'fixed';
+        modal.style.top = '0';
+        modal.style.left = '0';
+        modal.style.right = '0';
+        modal.style.bottom = '0';
+        modal.style.background = 'rgba(0,0,0,0.6)';
+        modal.style.zIndex = '10500';
+        modal.style.alignItems = 'center';
+        modal.style.justifyContent = 'center';
+        // Backdrop click (the modal element itself, not its content) dismisses.
+        modal.addEventListener('click', function (evt) {
+            if (evt.target === modal) {
+                modal.style.display = 'none';
+            }
+        });
+
+        var content = document.createElement('div');
+        content.className = 'oe-ai-agent-source-modal-content';
+        content.style.background = '#fff';
+        content.style.padding = '0.75em';
+        content.style.borderRadius = '4px';
+        content.style.maxWidth = '90vw';
+        content.style.maxHeight = '90vh';
+        content.style.overflow = 'auto';
+
+        var closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'oe-ai-agent-source-close';
+        closeBtn.textContent = '×';
+        closeBtn.style.float = 'right';
+        closeBtn.style.border = '0';
+        closeBtn.style.background = 'transparent';
+        closeBtn.style.fontSize = '1.4em';
+        closeBtn.style.lineHeight = '1';
+        closeBtn.style.cursor = 'pointer';
+        closeBtn.addEventListener('click', function () {
+            modal.style.display = 'none';
+        });
+        content.appendChild(closeBtn);
+
+        var body = document.createElement('div');
+        body.className = 'oe-ai-agent-source-body';
+        body.style.clear = 'both';
+        content.appendChild(body);
+
+        modal.appendChild(content);
+        if (answer.parentNode) {
+            answer.parentNode.insertBefore(modal, answer.nextSibling);
+        } else {
+            answer.appendChild(modal);
+        }
+        citationModal = modal;
+        citationModalBody = body;
+    }
+
+    // Fill the shared modal body with one citation's source and show it. Built
+    // entirely with createElement + textContent — never innerHTML.
+    function openCitation(citation) {
+        ensureCitationModal();
+        while (citationModalBody.firstChild) {
+            citationModalBody.removeChild(citationModalBody.firstChild);
+        }
+        if (citation.section) {
+            var section = document.createElement('div');
+            section.className = 'oe-ai-agent-source-section';
+            section.style.fontWeight = 'bold';
+            section.style.marginBottom = '0.35em';
+            section.textContent = String(citation.section);
+            citationModalBody.appendChild(section);
+        }
+        if (citation.text) {
+            var snippet = document.createElement('div');
+            snippet.className = 'oe-ai-agent-source-text';
+            snippet.textContent = String(citation.text);
+            citationModalBody.appendChild(snippet);
+        }
+        if (citation.type) {
+            var type = document.createElement('div');
+            type.className = 'oe-ai-agent-source-type';
+            type.style.color = '#777';
+            type.style.fontSize = '0.85em';
+            type.style.marginTop = '0.35em';
+            type.textContent = String(citation.type);
+            citationModalBody.appendChild(type);
+        }
+        citationModal.style.display = 'flex';
+    }
+
+    // Walk the answer's text nodes and turn each ``[Sn]`` marker whose number is
+    // a key in ``citations`` into a small clickable ``button.oe-ai-agent-cite``
+    // that opens the citation modal. Markers with no matching source are left as
+    // plain text. Text nodes are collected first, then split into
+    // text-node / button / text-node fragments — never innerHTML, and buttons we
+    // create are never re-walked.
+    function enhanceCitations(container, citations) {
+        var textNodes = [];
+        (function collect(node) {
+            for (var child = node.firstChild; child; child = child.nextSibling) {
+                if (child.nodeType === 3) {
+                    textNodes.push(child);
+                } else if (child.nodeType === 1) {
+                    collect(child);
+                }
+            }
+        })(container);
+
+        textNodes.forEach(function (textNode) {
+            var value = textNode.nodeValue;
+            var re = /\[S(\d+)\]/g;
+            var match = re.exec(value);
+            if (!match) {
+                return;
+            }
+            var parent = textNode.parentNode;
+            if (!parent) {
+                return;
+            }
+            var frag = document.createDocumentFragment();
+            var lastIndex = 0;
+            var replaced = false;
+            do {
+                var n = match[1];
+                if (Object.prototype.hasOwnProperty.call(citations, n)) {
+                    if (match.index > lastIndex) {
+                        frag.appendChild(document.createTextNode(value.slice(lastIndex, match.index)));
+                    }
+                    frag.appendChild(makeCiteButton(n, citations[n]));
+                    lastIndex = match.index + match[0].length;
+                    replaced = true;
+                }
+                match = re.exec(value);
+            } while (match);
+
+            if (!replaced) {
+                return;
+            }
+            if (lastIndex < value.length) {
+                frag.appendChild(document.createTextNode(value.slice(lastIndex)));
+            }
+            parent.replaceChild(frag, textNode);
+        });
+    }
+
+    function makeCiteButton(n, citation) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'oe-ai-agent-cite';
+        btn.setAttribute('data-n', n);
+        btn.textContent = '[S' + n + ']';
+        btn.style.fontSize = '0.85em';
+        btn.style.border = '0';
+        btn.style.background = 'transparent';
+        btn.style.color = '#337ab7';
+        btn.style.cursor = 'pointer';
+        btn.style.padding = '0';
+        btn.style.verticalAlign = 'baseline';
+        btn.addEventListener('click', function () {
+            openCitation(citation);
+        });
+        return btn;
+    }
+
     // POST to the SSE endpoint and consume the response body incrementally.
     // Status/tool frames update the live "thinking" line; the single gated
     // answer frame is rendered through the existing markdown path; an error
@@ -371,6 +548,14 @@
                             ? frame.data.answer
                             : 'No answer returned.'
                     );
+                } else if (frame.event === 'done') {
+                    // The terminal frame carries a citations map keyed by marker
+                    // number (T72a). When present and non-empty, turn the already-
+                    // rendered [Sn] markers into clickable source controls.
+                    var citations = frame.data && frame.data.citations;
+                    if (citations && typeof citations === 'object' && Object.keys(citations).length) {
+                        enhanceCitations(answer, citations);
+                    }
                 } else if (frame.event === 'error') {
                     // Never surface internal detail; a friendly message only.
                     answer.textContent = 'The assistant is unavailable right now.';
