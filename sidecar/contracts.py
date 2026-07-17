@@ -10,9 +10,64 @@ validate-and-passthrough: they raise on a contract violation but return the
 ORIGINAL data unchanged, so nothing (including unknown fields) is dropped from
 what the agent ultimately receives.
 """
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+
+
+# --- HTTP ENVELOPE contracts (the sidecar's request/response boundary) --------
+#
+# These four models are the single source of truth for the sidecar's published
+# HTTP surface (documented in ``openapi.yaml``). Request models are strict
+# (unknown fields rejected); response models ignore extras so a new server-side
+# field never breaks validation of a real response body.
+
+class AskRequest(BaseModel):
+    """``POST /ask`` (and ``/ask/stream``) request body."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pid: int
+    question: str
+    conversation_id: Optional[str] = None
+
+
+class AskResponse(BaseModel):
+    """``POST /ask`` 200 response body."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    answer: str
+    correlation_id: str
+
+
+class ExtractRequest(BaseModel):
+    """``POST /extract`` request body.
+
+    ``doc_type`` is constrained to the server's accepted document types via a
+    ``Literal`` so pydantic emits an ``enum`` in the JSON schema.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    pid: int
+    document_id: int
+    doc_type: Literal["lab_pdf", "intake_form"]
+
+
+class ExtractResponse(BaseModel):
+    """``POST /extract`` 200 response body (mirrors ``default_extract_builder``)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    ok: bool
+    doc_type: str
+    confidence: float
+    low_confidence: bool
+    unsupported_fields: list[str]
+    fact: dict
+    correlation_id: str
+    identity_check: Optional[dict] = None
 
 
 # --- INPUT models (strict: unknown fields rejected) --------------------------
