@@ -41,7 +41,7 @@ from observability import TraceCollector
 from retrieval import build_evidence_retriever_tool, get_guideline_index
 from extractor import attach_and_extract
 from bbox import locate_citation_boxes
-from demo_bbox import intake_demo_geometry
+from demo_bbox import demo_geometry
 from identity_check import check_identity
 from events import INGESTION_COMPLETE, INGESTION_START, log_event
 
@@ -831,7 +831,7 @@ def main() -> None:
         store,
         tracer,
         default_extract_builder(
-            summary_url, message_creator, read_url, word_geometry=intake_demo_geometry
+            summary_url, message_creator, read_url, word_geometry=demo_geometry
         ),
     )
     server = ThreadingHTTPServer((host, port), handler)
