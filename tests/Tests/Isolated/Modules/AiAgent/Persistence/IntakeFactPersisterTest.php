@@ -97,7 +97,7 @@ final class IntakeFactPersisterTest extends TestCase
         ];
     }
 
-    private function count(string $sql): int
+    private function countRows(string $sql): int
     {
         return (int) $this->db->query($sql)->fetch()['c'];
     }
@@ -108,13 +108,13 @@ final class IntakeFactPersisterTest extends TestCase
             'current_medications' => 'Lisinopril 10 mg once daily; Metformin 500 mg twice daily',
         ]));
 
-        $this->assertSame(2, $this->count("SELECT COUNT(*) c FROM prescriptions WHERE patient_id = 1 AND active = 1"));
+        $this->assertSame(2, $this->countRows("SELECT COUNT(*) c FROM prescriptions WHERE patient_id = 1 AND active = 1"));
         $drugs = $this->db->query('SELECT drug FROM prescriptions ORDER BY id')->fetchAll();
         $this->assertStringContainsString('Lisinopril', $drugs[0]['drug']);
         $this->assertStringContainsString('Metformin', $drugs[1]['drug']);
         $this->assertSame(2, (int) $ret['filed']['medication']);
 
-        $this->assertSame(2, $this->count("SELECT COUNT(*) c FROM ai_derived_fact WHERE fact_type = 'medication' AND target_table = 'prescriptions' AND active = 1"));
+        $this->assertSame(2, $this->countRows("SELECT COUNT(*) c FROM ai_derived_fact WHERE fact_type = 'medication' AND target_table = 'prescriptions' AND active = 1"));
     }
 
     public function testFilesAllergiesAsActiveList(): void
@@ -124,7 +124,7 @@ final class IntakeFactPersisterTest extends TestCase
         $row = $this->db->query("SELECT * FROM lists WHERE type = 'allergy'")->fetch();
         $this->assertStringContainsString('Penicillin', $row['title']);
         $this->assertSame(1, (int) $row['activity']);
-        $this->assertSame(1, $this->count("SELECT COUNT(*) c FROM ai_derived_fact WHERE fact_type = 'allergy' AND target_table = 'lists' AND active = 1"));
+        $this->assertSame(1, $this->countRows("SELECT COUNT(*) c FROM ai_derived_fact WHERE fact_type = 'allergy' AND target_table = 'lists' AND active = 1"));
     }
 
     public function testFilesFamilyHistoryAsProblemList(): void
@@ -133,8 +133,8 @@ final class IntakeFactPersisterTest extends TestCase
             'family_history' => 'Father: myocardial infarction at age 60; Mother: type 2 diabetes',
         ]));
 
-        $this->assertSame(2, $this->count("SELECT COUNT(*) c FROM lists WHERE type = 'medical_problem' AND activity = 1"));
-        $this->assertSame(2, $this->count("SELECT COUNT(*) c FROM ai_derived_fact WHERE fact_type = 'family_history' AND target_table = 'lists' AND active = 1"));
+        $this->assertSame(2, $this->countRows("SELECT COUNT(*) c FROM lists WHERE type = 'medical_problem' AND activity = 1"));
+        $this->assertSame(2, $this->countRows("SELECT COUNT(*) c FROM ai_derived_fact WHERE fact_type = 'family_history' AND target_table = 'lists' AND active = 1"));
     }
 
     public function testFilesChiefConcernAsSinglePnote(): void
@@ -146,7 +146,7 @@ final class IntakeFactPersisterTest extends TestCase
         $row = $this->db->query('SELECT * FROM pnotes')->fetch();
         $this->assertStringContainsString('chest tightness', $row['body']);
         $this->assertSame(1, (int) $row['activity']);
-        $this->assertSame(1, $this->count("SELECT COUNT(*) c FROM ai_derived_fact WHERE fact_type = 'chief_concern' AND target_table = 'pnotes' AND active = 1"));
+        $this->assertSame(1, $this->countRows("SELECT COUNT(*) c FROM ai_derived_fact WHERE fact_type = 'chief_concern' AND target_table = 'pnotes' AND active = 1"));
     }
 
     public function testDemographicsAreNeverWritten(): void
@@ -154,17 +154,17 @@ final class IntakeFactPersisterTest extends TestCase
         // Only demographics populated (default fact) -> nothing clinical is written.
         $ret = $this->persister()->persist(1, 42, 'run-1', 7, $this->fact());
 
-        $this->assertSame(0, $this->count('SELECT COUNT(*) c FROM prescriptions'));
-        $this->assertSame(0, $this->count('SELECT COUNT(*) c FROM lists'));
-        $this->assertSame(0, $this->count('SELECT COUNT(*) c FROM pnotes'));
-        $this->assertSame(0, $this->count('SELECT COUNT(*) c FROM ai_derived_fact'));
+        $this->assertSame(0, $this->countRows('SELECT COUNT(*) c FROM prescriptions'));
+        $this->assertSame(0, $this->countRows('SELECT COUNT(*) c FROM lists'));
+        $this->assertSame(0, $this->countRows('SELECT COUNT(*) c FROM pnotes'));
+        $this->assertSame(0, $this->countRows('SELECT COUNT(*) c FROM ai_derived_fact'));
         $this->assertSame(0, (int) $ret['filed']['medication']);
     }
 
     public function testNegationAllergyIsSkipped(): void
     {
         $ret = $this->persister()->persist(1, 42, 'run-1', 7, $this->fact(['allergies' => 'No known drug allergies']));
-        $this->assertSame(0, $this->count("SELECT COUNT(*) c FROM lists WHERE type = 'allergy'"));
+        $this->assertSame(0, $this->countRows("SELECT COUNT(*) c FROM lists WHERE type = 'allergy'"));
         $this->assertSame(0, (int) $ret['filed']['allergy']);
     }
 
@@ -175,13 +175,13 @@ final class IntakeFactPersisterTest extends TestCase
         $ret = $p->persist(1, 42, 'run-2', 7, $this->fact(['current_medications' => 'DrugC 3 mg']));
 
         // Prior meds soft-deactivated; only the new one is active.
-        $this->assertSame(1, $this->count('SELECT COUNT(*) c FROM prescriptions WHERE active = 1'));
-        $this->assertSame(2, $this->count('SELECT COUNT(*) c FROM prescriptions WHERE active = 0'));
+        $this->assertSame(1, $this->countRows('SELECT COUNT(*) c FROM prescriptions WHERE active = 1'));
+        $this->assertSame(2, $this->countRows('SELECT COUNT(*) c FROM prescriptions WHERE active = 0'));
         $this->assertStringContainsString('DrugC', $this->db->query('SELECT drug FROM prescriptions WHERE active = 1')->fetch()['drug']);
 
         // Provenance: one active medication row, two superseded.
-        $this->assertSame(1, $this->count("SELECT COUNT(*) c FROM ai_derived_fact WHERE fact_type = 'medication' AND active = 1"));
-        $this->assertSame(2, $this->count("SELECT COUNT(*) c FROM ai_derived_fact WHERE fact_type = 'medication' AND active = 0"));
+        $this->assertSame(1, $this->countRows("SELECT COUNT(*) c FROM ai_derived_fact WHERE fact_type = 'medication' AND active = 1"));
+        $this->assertSame(2, $this->countRows("SELECT COUNT(*) c FROM ai_derived_fact WHERE fact_type = 'medication' AND active = 0"));
         $this->assertSame(2, (int) $ret['superseded']);
     }
 
@@ -201,6 +201,6 @@ final class IntakeFactPersisterTest extends TestCase
         $this->assertSame(2, (int) $ret['filed']['family_history']);
         $this->assertSame(1, (int) $ret['filed']['chief_concern']);
         // 3 meds + 1 allergy + 2 problems + 1 note = 7 provenance rows; demographics wrote nothing extra.
-        $this->assertSame(7, $this->count('SELECT COUNT(*) c FROM ai_derived_fact WHERE active = 1'));
+        $this->assertSame(7, $this->countRows('SELECT COUNT(*) c FROM ai_derived_fact WHERE active = 1'));
     }
 }
