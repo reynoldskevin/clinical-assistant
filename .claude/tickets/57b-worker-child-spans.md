@@ -1,13 +1,13 @@
 ---
 id: 057b
 title: Distributed tracing — supervisor → worker child spans
-status: tests-authored
+status: ready-for-merge
 depends_on: [057a]
 branch: ticket/57b-worker-child-spans
 base_branch: ticket/57a-structured-events
 test_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests/test_worker_spans.py -q"
 full_suite_command: "docker exec w2-sidecar-test python -m pytest -c pytest.ini tests -q"
-attempts: 0
+attempts: 1
 ---
 
 ## Description

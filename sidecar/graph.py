@@ -40,6 +40,7 @@ from events import (
     WORKER_HANDOFF,
     log_event,
 )
+from observability import NullTracer
 from verification import VerificationGate
 
 # Worker node names, in the canonical order the supervisor visits them
@@ -201,32 +202,40 @@ def _worker_node(
     worker: str,
     kind: str,
     tool: Callable[..., dict[str, Any]],
+    tracer: Any = None,
 ) -> dict[str, Any]:
-    """Invoke an injected leaf tool and record its result + return hop."""
-    cid = state["correlation_id"]
-    result = tool(
-        question=state["question"],
-        pid=state["pid"],
-        correlation_id=cid,
-    )
-    citations = list(result["citations"])
-    payload = dict(result["payload"])
-    wr = WorkerResult(
-        worker=worker,
-        kind=kind,
-        correlation_id=cid,
-        citations=citations,
-        payload=payload,
-    )
+    """Invoke an injected leaf tool and record its result + return hop.
 
-    if worker == _EVIDENCE:
-        if citations:
-            log_event(RETRIEVAL_HIT, cid, count=len(citations))
-        else:
-            log_event(RETRIEVAL_MISS, cid)
-    elif worker == _INTAKE:
-        for field_name, outcome in payload.get("field_outcomes", {}).items():
-            log_event(EXTRACTION_FIELD, cid, field=field_name, outcome=outcome)
+    The tool call runs inside the worker's child span (``parent="supervisor"``),
+    entered before the tool runs and exited afterward — including when the tool
+    raises, so a full request trace is reconstructable from the correlation id.
+    """
+    resolved_tracer = tracer or NullTracer()
+    cid = state["correlation_id"]
+    with resolved_tracer.worker_span(worker, cid, kind=kind, parent="supervisor"):
+        result = tool(
+            question=state["question"],
+            pid=state["pid"],
+            correlation_id=cid,
+        )
+        citations = list(result["citations"])
+        payload = dict(result["payload"])
+        wr = WorkerResult(
+            worker=worker,
+            kind=kind,
+            correlation_id=cid,
+            citations=citations,
+            payload=payload,
+        )
+
+        if worker == _EVIDENCE:
+            if citations:
+                log_event(RETRIEVAL_HIT, cid, count=len(citations))
+            else:
+                log_event(RETRIEVAL_MISS, cid)
+        elif worker == _INTAKE:
+            for field_name, outcome in payload.get("field_outcomes", {}).items():
+                log_event(EXTRACTION_FIELD, cid, field=field_name, outcome=outcome)
 
     log_event(WORKER_HANDOFF, cid, from_=worker, to="supervisor")
     return {
@@ -242,6 +251,7 @@ def build_supervisor_graph(
     router: Callable[[str], list[str]] = route_workers,
     finalizer: Optional[Callable[[GraphState], str]] = None,
     gate: Any = None,
+    tracer: Any = None,
 ) -> Any:
     """Build and COMPILE the supervisor/worker LangGraph app.
 
@@ -253,15 +263,20 @@ def build_supervisor_graph(
     is injected to replace the answer computation.
     """
     resolved_gate = gate or VerificationGate()
+    resolved_tracer = tracer or NullTracer()
 
     def supervisor(state: GraphState) -> dict[str, Any]:
         return _supervisor_node(state, router)
 
     def intake_extractor(state: GraphState) -> dict[str, Any]:
-        return _worker_node(state, worker=_INTAKE, kind="extraction", tool=extractor)
+        return _worker_node(
+            state, worker=_INTAKE, kind="extraction", tool=extractor, tracer=resolved_tracer
+        )
 
     def evidence_retriever(state: GraphState) -> dict[str, Any]:
-        return _worker_node(state, worker=_EVIDENCE, kind="evidence", tool=retriever)
+        return _worker_node(
+            state, worker=_EVIDENCE, kind="evidence", tool=retriever, tracer=resolved_tracer
+        )
 
     def finalize(state: GraphState) -> dict[str, Any]:
         if finalizer is not None:
