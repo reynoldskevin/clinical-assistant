@@ -57,6 +57,16 @@ class NullTracer:
         """Return a no-op context manager, ignoring the turn's ``metadata``."""
         return contextlib.nullcontext()
 
+    def worker_span(
+        self,
+        name: str,
+        correlation_id: str,
+        kind: str | None = None,
+        parent: str = "supervisor",
+    ) -> contextlib.AbstractContextManager[None]:
+        """Return a no-op child span, ignoring all span metadata (zero overhead)."""
+        return contextlib.nullcontext()
+
 
 class TraceCollector:
     """Accumulates model-usage and tool-call metrics for a single agent run."""
