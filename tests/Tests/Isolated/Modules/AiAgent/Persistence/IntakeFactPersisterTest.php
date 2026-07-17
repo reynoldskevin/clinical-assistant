@@ -41,7 +41,7 @@ final class IntakeFactPersisterTest extends TestCase
 {
     private const SRC = 'openemr';
     private const TEST = 'openemr_ai_intake_test';
-    private const TABLES = ['prescriptions', 'lists', 'pnotes', 'ai_derived_fact'];
+    private const TABLES = ['prescriptions', 'lists', 'pnotes', 'form_encounter', 'forms', 'ai_derived_fact'];
 
     private \PDO $db;
 
@@ -102,19 +102,21 @@ final class IntakeFactPersisterTest extends TestCase
         return (int) $this->db->query($sql)->fetch()['c'];
     }
 
-    public function testFilesMedicationsAsActivePrescriptions(): void
+    public function testFilesMedicationsToMedicationList(): void
     {
         $ret = $this->persister()->persist(1, 42, 'run-1', 7, $this->fact([
             'current_medications' => 'Lisinopril 10 mg once daily; Metformin 500 mg twice daily',
         ]));
 
-        $this->assertSame(2, $this->countRows("SELECT COUNT(*) c FROM prescriptions WHERE patient_id = 1 AND active = 1"));
-        $drugs = $this->db->query('SELECT drug FROM prescriptions ORDER BY id')->fetchAll();
-        $this->assertStringContainsString('Lisinopril', $drugs[0]['drug']);
-        $this->assertStringContainsString('Metformin', $drugs[1]['drug']);
+        // Meds go to the Medications list (lists type='medication'), not prescriptions.
+        $this->assertSame(0, $this->countRows("SELECT COUNT(*) c FROM prescriptions"));
+        $this->assertSame(2, $this->countRows("SELECT COUNT(*) c FROM lists WHERE type = 'medication' AND activity = 1"));
+        $drugs = $this->db->query("SELECT title FROM lists WHERE type = 'medication' ORDER BY id")->fetchAll();
+        $this->assertStringContainsString('Lisinopril', $drugs[0]['title']);
+        $this->assertStringContainsString('Metformin', $drugs[1]['title']);
         $this->assertSame(2, (int) $ret['filed']['medication']);
 
-        $this->assertSame(2, $this->countRows("SELECT COUNT(*) c FROM ai_derived_fact WHERE fact_type = 'medication' AND target_table = 'prescriptions' AND active = 1"));
+        $this->assertSame(2, $this->countRows("SELECT COUNT(*) c FROM ai_derived_fact WHERE fact_type = 'medication' AND target_table = 'lists' AND active = 1"));
     }
 
     public function testFilesAllergiesAsActiveList(): void
@@ -137,16 +139,24 @@ final class IntakeFactPersisterTest extends TestCase
         $this->assertSame(2, $this->countRows("SELECT COUNT(*) c FROM ai_derived_fact WHERE fact_type = 'family_history' AND target_table = 'lists' AND active = 1"));
     }
 
-    public function testFilesChiefConcernAsSinglePnote(): void
+    public function testFilesChiefConcernAsEncounterReason(): void
     {
         $this->persister()->persist(1, 42, 'run-1', 7, $this->fact([
             'chief_concern' => 'Intermittent chest tightness for 2 weeks',
         ]));
 
-        $row = $this->db->query('SELECT * FROM pnotes')->fetch();
-        $this->assertStringContainsString('chest tightness', $row['body']);
-        $this->assertSame(1, (int) $row['activity']);
-        $this->assertSame(1, $this->countRows("SELECT COUNT(*) c FROM ai_derived_fact WHERE fact_type = 'chief_concern' AND target_table = 'pnotes' AND active = 1"));
+        // An encounter (form_encounter) carries the chief concern as its reason,
+        // with a `forms` registration so it shows in the Encounters history.
+        $enc = $this->db->query('SELECT * FROM form_encounter WHERE pid = 1')->fetch();
+        $this->assertStringContainsString('chest tightness', $enc['reason']);
+        $form = $this->db->query(
+            "SELECT * FROM forms WHERE formdir = 'newpatient' AND deleted = 0 AND encounter = " . (int) $enc['encounter']
+        )->fetch();
+        $this->assertIsArray($form);
+        $this->assertSame((int) $enc['id'], (int) $form['form_id']);
+        // Not written to pnotes anymore.
+        $this->assertSame(0, $this->countRows('SELECT COUNT(*) c FROM pnotes'));
+        $this->assertSame(1, $this->countRows("SELECT COUNT(*) c FROM ai_derived_fact WHERE fact_type = 'chief_concern' AND target_table = 'form_encounter' AND active = 1"));
     }
 
     public function testDemographicsAreNeverWritten(): void
@@ -157,6 +167,7 @@ final class IntakeFactPersisterTest extends TestCase
         $this->assertSame(0, $this->countRows('SELECT COUNT(*) c FROM prescriptions'));
         $this->assertSame(0, $this->countRows('SELECT COUNT(*) c FROM lists'));
         $this->assertSame(0, $this->countRows('SELECT COUNT(*) c FROM pnotes'));
+        $this->assertSame(0, $this->countRows('SELECT COUNT(*) c FROM form_encounter'));
         $this->assertSame(0, $this->countRows('SELECT COUNT(*) c FROM ai_derived_fact'));
         $this->assertSame(0, (int) $ret['filed']['medication']);
     }
@@ -168,18 +179,17 @@ final class IntakeFactPersisterTest extends TestCase
         $this->assertSame(0, (int) $ret['filed']['allergy']);
     }
 
-    public function testRefileSoftSupersedesMedicationsPerFactType(): void
+    public function testRefileSupersedesMedicationsInTheMedicationList(): void
     {
         $p = $this->persister();
         $p->persist(1, 42, 'run-1', 7, $this->fact(['current_medications' => 'DrugA 1 mg; DrugB 2 mg']));
         $ret = $p->persist(1, 42, 'run-2', 7, $this->fact(['current_medications' => 'DrugC 3 mg']));
 
-        // Prior meds soft-deactivated; only the new one is active.
-        $this->assertSame(1, $this->countRows('SELECT COUNT(*) c FROM prescriptions WHERE active = 1'));
-        $this->assertSame(2, $this->countRows('SELECT COUNT(*) c FROM prescriptions WHERE active = 0'));
-        $this->assertStringContainsString('DrugC', $this->db->query('SELECT drug FROM prescriptions WHERE active = 1')->fetch()['drug']);
+        // Prior meds removed from the Medications list; only the new one remains.
+        $this->assertSame(1, $this->countRows("SELECT COUNT(*) c FROM lists WHERE type = 'medication'"));
+        $this->assertStringContainsString('DrugC', $this->db->query("SELECT title FROM lists WHERE type = 'medication'")->fetch()['title']);
 
-        // Provenance: one active medication row, two superseded.
+        // Provenance: one active medication row, two superseded (history preserved).
         $this->assertSame(1, $this->countRows("SELECT COUNT(*) c FROM ai_derived_fact WHERE fact_type = 'medication' AND active = 1"));
         $this->assertSame(2, $this->countRows("SELECT COUNT(*) c FROM ai_derived_fact WHERE fact_type = 'medication' AND active = 0"));
         $this->assertSame(2, (int) $ret['superseded']);
@@ -200,7 +210,7 @@ final class IntakeFactPersisterTest extends TestCase
         $this->assertSame(1, (int) $ret['filed']['allergy']);
         $this->assertSame(2, (int) $ret['filed']['family_history']);
         $this->assertSame(1, (int) $ret['filed']['chief_concern']);
-        // 3 meds + 1 allergy + 2 problems + 1 note = 7 provenance rows; demographics wrote nothing extra.
+        // 3 meds + 1 allergy + 2 problems + 1 encounter = 7 provenance rows; demographics wrote nothing extra.
         $this->assertSame(7, $this->countRows('SELECT COUNT(*) c FROM ai_derived_fact WHERE active = 1'));
     }
 
@@ -222,17 +232,15 @@ final class IntakeFactPersisterTest extends TestCase
         $this->assertSame(2, $this->countRows("SELECT COUNT(*) c FROM ai_derived_fact WHERE target_table = 'lists' AND active = 0"));
     }
 
-    public function testChiefConcernNoteStoresUsernameNotNumericId(): void
+    public function testChiefConcernEncounterFormRegistrationUsesUsername(): void
     {
-        // OpenEMR's addPnote stores the USERNAME in pnotes.user, and the Patient
-        // Notes view filters `pid != user`. If we stored the numeric clinician id
-        // and it coincided with the pid (e.g. admin=id 1 filing to pid 1), the note
-        // would be hidden. With a username supplied, pnotes.user must be the name.
+        // The `forms` registration's `user` column is a USERNAME in OpenEMR; store
+        // the supplied clinician username, not the numeric id.
         $this->persister()->persist(1, 42, 'run-1', 1, $this->fact([
             'chief_concern' => 'Chest tightness',
         ]), 'admin');
 
-        $row = $this->db->query('SELECT user FROM pnotes')->fetch();
+        $row = $this->db->query("SELECT user FROM forms WHERE formdir = 'newpatient'")->fetch();
         $this->assertSame('admin', $row['user']);
     }
 }

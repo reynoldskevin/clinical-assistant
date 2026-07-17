@@ -43,7 +43,7 @@ final class PersistFactsEndpointTest extends TestCase
     private const TEST = 'openemr_ai_persist_test';
     private const TABLES = [
         'procedure_order', 'procedure_report', 'procedure_result',
-        'prescriptions', 'lists', 'pnotes', 'ai_derived_fact',
+        'prescriptions', 'lists', 'pnotes', 'form_encounter', 'forms', 'ai_derived_fact',
     ];
 
     private \PDO $db;
@@ -120,10 +120,10 @@ final class PersistFactsEndpointTest extends TestCase
         ];
         $resp = $this->endpoint()->handle(1, 42, 'run-1', 'intake_form', $fact, 7);
 
-        $this->assertSame(2, $this->countRows('SELECT COUNT(*) c FROM prescriptions WHERE active = 1'));
+        $this->assertSame(2, $this->countRows("SELECT COUNT(*) c FROM lists WHERE type = 'medication'"));
         $this->assertSame(1, $this->countRows("SELECT COUNT(*) c FROM lists WHERE type = 'allergy'"));
         $this->assertSame(1, $this->countRows("SELECT COUNT(*) c FROM lists WHERE type = 'medical_problem'"));
-        $this->assertSame(1, $this->countRows('SELECT COUNT(*) c FROM pnotes'));
+        $this->assertSame(1, $this->countRows('SELECT COUNT(*) c FROM form_encounter'));
 
         $this->assertTrue($resp['ok']);
         $this->assertSame('intake_form', $resp['doc_type']);
