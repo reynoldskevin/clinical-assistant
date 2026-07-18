@@ -201,7 +201,8 @@ describe('agent-widget: lab trend chart', () => {
         // One accurate date label per plotted Glucose point, in chronological order.
         expect(xticks.map(function (t) { return t.getAttribute('data-date'); }))
             .toEqual(['2019-06-01', '2020-06-01', '2021-06-01']);
-        xticks.forEach(function (t) { expect(t.textContent.length).toBeGreaterThan(0); });
+        // Labels are compact mm/dd (the full ISO date stays on data-date).
+        xticks.forEach(function (t) { expect(t.textContent).toMatch(/^\d{2}\/\d{2}$/); });
         // POSITION accuracy: the last date tick aligns with the last point's x.
         const pts = els('.oe-ai-agent-trends .oe-ai-agent-trends-point');
         const lastPoint = pts[pts.length - 1];
@@ -241,6 +242,43 @@ describe('agent-widget: lab trend chart', () => {
         expect(el('svg', container)).toBeNull();
         expect(container.textContent).toMatch(/no/i);
         expect(container.textContent).toMatch(/result|lab/i);
+    });
+
+    test('the chart svg fills the container width (responsive)', async () => {
+        document.body.innerHTML = SCAFFOLD;
+        installFetch(CONTRACT_ROWS);
+        loadWidget();
+
+        openTrends();
+        await flushAll();
+
+        const svg = el('.oe-ai-agent-trends .oe-ai-agent-trends-chart');
+        expect(svg).not.toBeNull();
+        expect(svg.getAttribute('width')).toBe('100%');
+        // Keeps an internal coordinate system so the point/axis math is unaffected.
+        expect(svg.getAttribute('viewBox')).toMatch(/^0 0 \d+ \d+$/);
+    });
+
+    test('clicking Lab trends while open closes it (toggle), and clicking again re-opens', async () => {
+        document.body.innerHTML = SCAFFOLD;
+        installFetch(CONTRACT_ROWS);
+        loadWidget();
+
+        openTrends();
+        await flushAll();
+        expect(el('.oe-ai-agent-trends .oe-ai-agent-trends-chart')).not.toBeNull();
+
+        // Second click closes: the chart area is cleared.
+        openTrends();
+        await flushAll();
+        const container = el('.oe-ai-agent-trends');
+        expect(el('.oe-ai-agent-trends-chart', container)).toBeNull();
+        expect(container.textContent).toBe('');
+
+        // Third click re-opens.
+        openTrends();
+        await flushAll();
+        expect(el('.oe-ai-agent-trends .oe-ai-agent-trends-chart')).not.toBeNull();
     });
 
     test('a read.php failure shows a generic error and no chart (no token leak)', async () => {
