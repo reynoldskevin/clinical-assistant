@@ -280,6 +280,20 @@ describe('agent-widget: lab trend chart', () => {
         xticks.forEach(function (t) { expect(t.textContent).not.toMatch(/\d:\d/); });
     });
 
+    test('both axes use a compact (halved) tick font to reduce label overlap', async () => {
+        document.body.innerHTML = SCAFFOLD;
+        installFetch(CONTRACT_ROWS);
+        loadWidget();
+
+        openTrends();
+        await flushAll();
+
+        const ytick = el('.oe-ai-agent-trends .oe-ai-agent-trends-ytick');
+        const xtick = el('.oe-ai-agent-trends .oe-ai-agent-trends-xtick');
+        expect(ytick.getAttribute('font-size')).toBe('4.5');
+        expect(xtick.getAttribute('font-size')).toBe('4.5');
+    });
+
     test('clicking Lab trends while open closes it (toggle), and clicking again re-opens', async () => {
         document.body.innerHTML = SCAFFOLD;
         installFetch(CONTRACT_ROWS);
