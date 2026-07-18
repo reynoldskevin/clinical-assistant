@@ -79,7 +79,7 @@ if ($pid <= 0) {
 
 // 5. Parse the doc_type into the closed set the read side understands.
 $docType = (string) ($_POST['doc_type'] ?? '');
-if (!in_array($docType, ['lab_pdf', 'intake_form'], true)) {
+if (!in_array($docType, ['lab_pdf', 'intake_form', 'med_list'], true)) {
     $fail(400, 'Invalid document type');
 }
 

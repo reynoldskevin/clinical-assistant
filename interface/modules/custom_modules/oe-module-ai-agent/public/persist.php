@@ -36,6 +36,7 @@ use OpenEMR\Modules\AiAgent\Boundary\PersistFactsEndpoint;
 use OpenEMR\Modules\AiAgent\Persistence\DerivedFactProvenanceService;
 use OpenEMR\Modules\AiAgent\Persistence\IntakeFactPersister;
 use OpenEMR\Modules\AiAgent\Persistence\LabFactPersister;
+use OpenEMR\Modules\AiAgent\Persistence\MedicationFactPersister;
 use OpenEMR\Modules\AiAgent\Persistence\NarrativeFieldSplitter;
 
 // The persisters and endpoint are plain module classes; the module namespace is
@@ -48,6 +49,7 @@ require_once $srcPersist . 'DerivedFactProvenanceService.php';
 require_once $srcPersist . 'NarrativeFieldSplitter.php';
 require_once $srcPersist . 'LabFactPersister.php';
 require_once $srcPersist . 'IntakeFactPersister.php';
+require_once $srcPersist . 'MedicationFactPersister.php';
 require_once __DIR__ . '/../src/Boundary/PersistFactsEndpoint.php';
 
 header('Content-Type: application/json');
@@ -100,7 +102,7 @@ if ($sourceDocumentId <= 0) {
 }
 
 $docType = (string) ($payload['doc_type'] ?? '');
-if (!in_array($docType, ['lab_pdf', 'intake_form'], true)) {
+if (!in_array($docType, ['lab_pdf', 'intake_form', 'med_list'], true)) {
     $fail(400, 'Invalid document type');
 }
 
@@ -133,6 +135,7 @@ try {
     $endpoint = new PersistFactsEndpoint(
         new LabFactPersister($pdo, $provenance),
         new IntakeFactPersister($pdo, $provenance, new NarrativeFieldSplitter()),
+        new MedicationFactPersister($pdo, $provenance, new NarrativeFieldSplitter()),
     );
 
     $result = $endpoint->handle(

@@ -24,6 +24,7 @@ use OpenEMR\Modules\AiAgent\Boundary\PersistFactsEndpoint;
 use OpenEMR\Modules\AiAgent\Persistence\DerivedFactProvenanceService;
 use OpenEMR\Modules\AiAgent\Persistence\IntakeFactPersister;
 use OpenEMR\Modules\AiAgent\Persistence\LabFactPersister;
+use OpenEMR\Modules\AiAgent\Persistence\MedicationFactPersister;
 use OpenEMR\Modules\AiAgent\Persistence\NarrativeFieldSplitter;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -34,6 +35,7 @@ require_once $persist . 'DerivedFactProvenanceService.php';
 require_once $persist . 'NarrativeFieldSplitter.php';
 require_once $persist . 'LabFactPersister.php';
 require_once $persist . 'IntakeFactPersister.php';
+require_once $persist . 'MedicationFactPersister.php';
 require_once __DIR__ . '/../../../../../../interface/modules/custom_modules/oe-module-ai-agent/src/Boundary/PersistFactsEndpoint.php';
 
 #[Group('isolated')]
@@ -80,7 +82,8 @@ final class PersistFactsEndpointTest extends TestCase
         $prov = new DerivedFactProvenanceService($this->db);
         return new PersistFactsEndpoint(
             new LabFactPersister($this->db, $prov),
-            new IntakeFactPersister($this->db, $prov, new NarrativeFieldSplitter())
+            new IntakeFactPersister($this->db, $prov, new NarrativeFieldSplitter()),
+            new MedicationFactPersister($this->db, $prov, new NarrativeFieldSplitter())
         );
     }
 
@@ -131,6 +134,24 @@ final class PersistFactsEndpointTest extends TestCase
         $this->assertSame(2, (int) $factTypes['medication']);
         $this->assertSame(1, (int) $factTypes['allergy']);
         $this->assertSame(5, (int) $resp['total']); // 2 meds + 1 allergy + 1 problem + 1 concern
+    }
+
+    public function testDispatchesMedListToMedicationPersister(): void
+    {
+        $fact = [
+            'medications' => 'Lisinopril 10 mg PO once daily; Metformin 500 mg PO twice daily; Atorvastatin 20 mg PO at night',
+            'source_citation' => 'Medication list, p1',
+        ];
+        $resp = $this->endpoint()->handle(1, 42, 'run-1', 'med_list', $fact, 7);
+
+        // Three medications filed under the Medications panel (lists type='medication').
+        $this->assertSame(3, $this->countRows("SELECT COUNT(*) c FROM lists WHERE type = 'medication'"));
+
+        $this->assertTrue($resp['ok']);
+        $this->assertSame('med_list', $resp['doc_type']);
+        $factTypes = array_column($resp['filed'], 'count', 'fact_type');
+        $this->assertSame(3, (int) $factTypes['medication']);
+        $this->assertSame(3, (int) $resp['total']);
     }
 
     public function testUnknownDocTypeWritesNothingAndThrows(): void
