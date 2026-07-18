@@ -358,6 +358,22 @@ def test_parse_falls_back_to_title_and_section_context(tmp_path):
     assert chunks[0].context == "Sample Guideline. Second Section."
 
 
+def test_blank_authored_context_falls_back_to_title_and_section(tmp_path):
+    # AC3 (robustness): an empty `<!-- context: -->` is treated as absent, so the
+    # title/section fallback still fires and a chunk is never left context-less.
+    md = tmp_path / "g.md"
+    md.write_text(
+        "# Sample Guideline\n\n"
+        "## Third Section\n\n"
+        "<!-- context:    -->\n"
+        "Body only, blank context comment above.\n",
+        encoding="utf-8",
+    )
+    chunks = _parse_markdown(str(md))
+    assert len(chunks) == 1
+    assert chunks[0].context == "Sample Guideline. Third Section."
+
+
 def test_corpus_authors_context_beyond_the_bare_fallback():
     # AC4: the committed corpus actually authors situating sentences — at least
     # one chunk's context differs from the pure title/section fallback.
