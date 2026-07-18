@@ -201,8 +201,8 @@ describe('agent-widget: lab trend chart', () => {
         // One accurate date label per plotted Glucose point, in chronological order.
         expect(xticks.map(function (t) { return t.getAttribute('data-date'); }))
             .toEqual(['2019-06-01', '2020-06-01', '2021-06-01']);
-        // Labels are compact mm/dd (the full ISO date stays on data-date).
-        xticks.forEach(function (t) { expect(t.textContent).toMatch(/^\d{2}\/\d{2}$/); });
+        // Labels are compact mm/dd/yy (the full ISO date stays on data-date).
+        xticks.forEach(function (t) { expect(t.textContent).toMatch(/^\d{2}\/\d{2}\/\d{2}$/); });
         // POSITION accuracy: the last date tick aligns with the last point's x.
         const pts = els('.oe-ai-agent-trends .oe-ai-agent-trends-point');
         const lastPoint = pts[pts.length - 1];
@@ -276,7 +276,7 @@ describe('agent-widget: lab trend chart', () => {
         await flushAll();
 
         const xticks = els('.oe-ai-agent-trends .oe-ai-agent-trends-xtick');
-        expect(xticks.map(function (t) { return t.textContent; })).toEqual(['03/15', '08/20']);
+        expect(xticks.map(function (t) { return t.textContent; })).toEqual(['03/15/21', '08/20/21']);
         xticks.forEach(function (t) { expect(t.textContent).not.toMatch(/\d:\d/); });
     });
 
@@ -292,6 +292,22 @@ describe('agent-widget: lab trend chart', () => {
         const xtick = el('.oe-ai-agent-trends .oe-ai-agent-trends-xtick');
         expect(ytick.getAttribute('font-size')).toBe('4.5');
         expect(xtick.getAttribute('font-size')).toBe('4.5');
+    });
+
+    test('x-axis labels are rotated 90deg clockwise and the line/points are lighter weight', async () => {
+        document.body.innerHTML = SCAFFOLD;
+        installFetch(CONTRACT_ROWS);
+        loadWidget();
+
+        openTrends();
+        await flushAll();
+
+        const xtick = el('.oe-ai-agent-trends .oe-ai-agent-trends-xtick');
+        expect(xtick.getAttribute('transform')).toMatch(/rotate\(90[ ,]/);
+        // line weight halved (2 -> 1)
+        expect(el('.oe-ai-agent-trends .oe-ai-agent-trends-line').getAttribute('stroke-width')).toBe('1');
+        // point radius halved (3.5 -> 1.75)
+        expect(el('.oe-ai-agent-trends .oe-ai-agent-trends-point').getAttribute('r')).toBe('1.75');
     });
 
     test('clicking Lab trends while open closes it (toggle), and clicking again re-opens', async () => {
