@@ -1,7 +1,7 @@
 ---
 id: 83
 title: Deterministically ground inline guideline citations into citation_sources
-status: tests-authored
+status: ready-for-merge
 depends_on: []
 branch: ticket/83-deterministic-guideline-grounding
 base_branch: main
