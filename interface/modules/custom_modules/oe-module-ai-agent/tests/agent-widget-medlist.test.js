@@ -105,6 +105,22 @@ describe('agent-widget: med_list document type', () => {
         expect(text.indexOf('Lisinopril')).toBeLessThan(text.indexOf(CITE));
     });
 
+    test('a med_list extraction is labelled "Extracted medications"', async () => {
+        // T76: the heading previously fell through to the intake label for any
+        // non-lab doc_type, so a med_list extraction read "Extracted intake facts".
+        document.body.innerHTML = SCAFFOLD;
+        installFetch();
+        loadWidget();
+
+        upload();
+        await flushAll();
+
+        const text = el('.oe-ai-agent-extract').textContent;
+        expect(text).toContain('Extracted medications');
+        expect(text).not.toContain('Extracted intake facts');
+        expect(text).not.toContain('Extracted lab result');
+    });
+
     test('the upload posts doc_type=med_list to /extract', async () => {
         document.body.innerHTML = SCAFFOLD;
         const calls = installFetch();
