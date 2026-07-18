@@ -412,3 +412,78 @@ committed corpus, so it needs no separate backup.
 - Guideline corpus = small redistributable/synthetic public snippets, in-repo.
 - Critic worker deferred as extension (non-core per brief).
 - SLO numeric targets fixed after the T44/T45 baseline run.
+
+---
+
+## 15. Risks & tradeoffs (explicit)
+
+This section makes the design's accepted risks and the reasoning behind each
+major tradeoff explicit — the failure-mode *mechanics* are in §10; here is *why
+the design is shaped this way and what it costs*.
+
+### 15.1 Key risks and their mitigations
+
+| Risk | Likelihood / impact | Mitigation (where) |
+|---|---|---|
+| **VLM hallucinates or over-states a fact** (a fabricated lab value entering the record) | Med / High | Schema is source of truth (§2); ungrounded field → `null` + `unsupported_fields`; confidence is advisory, **quote-locatability is authoritative**; uncited clinical claims demoted/blocked by the gate (§6, V8) |
+| **Prescriptive/unsafe suggestion in the agent's own voice** | Low / High | V8 unsafe-action gate blocks imperatives / "you should …" / first-person "I recommend …" in the assistant's own voice while allowing reported guidance ("Guidelines recommend …") — read-only posture enforced, not assumed |
+| **Wrong-chart / cross-patient leak** | Low / Critical | pid-scoped fail-closed JWT boundary (Week 1, unchanged); cross-pid → 403; every read audited; a dedicated wrong-chart identity-mismatch eval case |
+| **PHI leaks into logs / traces / eval data / screenshots** | Med / Critical | Events carry ids + outcomes, never values (§11); PHI-detection CI gate (blocking); synthetic-only fixtures; `no_phi_in_logs` rubric is a hard 1.0 floor |
+| **Retrieval dependency (Qdrant/Cohere) slow or down** | Med / Low | 2 s timeout, 2 retries, circuit breaker (open after 5, 30 s cooldown) → degrade to record-only answer; sidecar stays live (§7, §10) |
+| **Live model overloaded (529/429/5xx) during extraction** | Med / Med | Transient-error fallover to a secondary model; a non-transient error or `ValidationError` propagates unmasked (§2, `extractor.py`) |
+| **Eval gate gives false confidence** (a real regression slips through) | Low / High | Two-tier gate: deterministic offline (blocking) proves each grader discriminates good vs bad; live sweep catches prompt-quality drift; injected-regression drill verifies the gate has teeth ([`W2_CI_EVIDENCE.md`](W2_CI_EVIDENCE.md)) |
+| **Cost blow-up at scale** (per-turn VLM re-extraction, large input context) | Med / Med | Documented in [`COST_ANALYSIS_W2_FINAL.md`](COST_ANALYSIS_W2_FINAL.md): cache `/extract` results, prompt caching, context trimming; model tiering (Haiku default) |
+| **Real PHI mistakenly deployed to demo infra** | Low / Critical | Hard invariant: synthetic/demo only; real PHI requires BAA/ZDR infra (deferred M4); `dev_mint` is synthetic-demo-only and clearly scoped |
+
+### 15.2 Deliberate tradeoffs
+
+- **Sidecar out-of-process (Python) vs. in-PHP.** Chosen: a separate service.
+  *Cost* — a second deployable, a network hop, and a shared-secret boundary to
+  secure. *Benefit* — a multi-second model call never blocks a PHP-FPM worker,
+  the LLM stack stays off the PHP runtime, and the agent can be scaled/deployed
+  independently. The clean HTTP seam also keeps OpenEMR core unmodified.
+
+- **Deterministic rule-based supervisor router vs. an LLM router.** Chosen:
+  keyword rules (`route_workers`). *Cost* — less flexible; a novel phrasing may
+  route sub-optimally (mitigated by "neither keyword → run both"). *Benefit* —
+  free, instant, fully testable offline, and inspectable; no extra model call or
+  nondeterminism in the control plane.
+
+- **Schema-strict extraction (reject/flag) vs. best-effort fill.** Chosen:
+  strict. *Cost* — some genuinely-present values get flagged `unsupported` when
+  the quote can't be located, so recall is lower. *Benefit* — **no invented
+  clinical data ever reaches the record**; for a clinical assistant a false
+  "couldn't extract" is far safer than a confident wrong value.
+
+- **Behavioral evals (boolean rubrics) vs. accuracy scoring.** Chosen: boolean
+  rubrics on grounded/safe/honest behavior. *Cost* — no single "correctness %"
+  headline number. *Benefit* — for a read-only assistant, *did it read the
+  chart, cite, defer safety, refuse injection, avoid PHI leakage* matters more
+  than a fuzzy accuracy score, and boolean rubrics make a PR-blocking regression
+  gate unambiguous.
+
+- **Offline gate blocking, live sweep non-blocking.** Chosen: the deterministic
+  suite gates merges; the real-LLM sweep is a scheduled signal. *Cost* — a pure
+  prompt-quality regression that only the live sweep would catch does not block a
+  merge in real time. *Benefit* — a small model + strict graders + run-to-run
+  variance sit below the aspirational 0.9, so making the live sweep blocking
+  would red healthy pipelines; the offline gate + real-agent canary is
+  deterministic and reproducible with no secrets.
+
+- **In-repo corpus + rebuildable index vs. a managed vector DB as source of
+  truth.** Chosen: corpus in git, index derived. *Cost* — the corpus is small and
+  must be curated by hand. *Benefit* — evidence is reproducible from the repo
+  alone, the index needs no backup, and vendors are swappable behind protocols.
+
+- **VLM re-extraction per intake question vs. persisted extraction cache.**
+  Chosen (MVP): re-extract on demand. *Cost* — a per-turn vision cost + latency
+  spike on intake questions. *Benefit* — no cache-invalidation surface at MVP
+  volume; the fix (cache `/extract` by pid/document) is staged and costed in
+  [`COST_ANALYSIS_W2_FINAL.md`](COST_ANALYSIS_W2_FINAL.md).
+
+### 15.3 Explicitly out of scope (accepted, documented)
+
+Real-PHI paths (deferred M4), third-party model/reranker internal accuracy (we
+test *our* wiring and *our* validation of their output, not their model quality),
+and Qdrant/Cohere availability under production load (covered by SLO + alerting +
+circuit breaker, not unit tests). See §9 "Not tested (and why)".
