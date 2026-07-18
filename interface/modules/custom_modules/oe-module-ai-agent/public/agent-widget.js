@@ -1434,11 +1434,58 @@
             });
         }
 
-        // Render the SVG line chart + point markers for one series.
+        // Format an axis value: trim to at most 2 decimals, drop trailing zeros.
+        function fmtAxisNum(v) {
+            return String(Math.round(v * 100) / 100);
+        }
+
+        // Compact date label for the x axis (keeps the full ISO date on data-date).
+        function fmtAxisDate(iso) {
+            var parts = String(iso).split('-');
+            if (parts.length === 3) {
+                // MM/DD/YY — narrow enough to sit under a point without wrapping.
+                return parts[1] + '/' + parts[2] + '/' + parts[0].slice(2);
+            }
+            return String(iso);
+        }
+
+        function svgText(x, y, text, cls, anchor) {
+            var t = document.createElementNS(SVG_NS, 'text');
+            t.setAttribute('x', String(x));
+            t.setAttribute('y', String(y));
+            t.setAttribute('class', cls);
+            t.setAttribute('font-size', '9');
+            t.setAttribute('fill', '#666');
+            if (anchor) {
+                t.setAttribute('text-anchor', anchor);
+            }
+            t.textContent = text;
+            return t;
+        }
+
+        function svgLine(x1, y1, x2, y2, stroke) {
+            var l = document.createElementNS(SVG_NS, 'line');
+            l.setAttribute('x1', String(x1));
+            l.setAttribute('y1', String(y1));
+            l.setAttribute('x2', String(x2));
+            l.setAttribute('y2', String(y2));
+            l.setAttribute('stroke', stroke);
+            l.setAttribute('stroke-width', '1');
+            return l;
+        }
+
+        // Render the SVG line chart + point markers + accurate X/Y axes for one
+        // series. Ticks are placed with the SAME xOf/yOf scale as the points, so a
+        // value/date label sits exactly where its data point does.
         function buildChart(series) {
-            var width = 320;
-            var height = 140;
-            var pad = 20;
+            var width = 340;
+            var height = 168;
+            var padLeft = 42;
+            var padRight = 14;
+            var padTop = 12;
+            var padBottom = 30;
+            var innerW = width - padLeft - padRight;
+            var innerH = height - padTop - padBottom;
             var svg = document.createElementNS(SVG_NS, 'svg');
             svg.setAttribute('class', 'oe-ai-agent-trends-chart');
             svg.setAttribute('width', String(width));
@@ -1455,19 +1502,45 @@
 
             function xOf(t) {
                 if (maxT === minT) {
-                    return width / 2;
+                    return padLeft + innerW / 2;
                 }
-                return pad + (t - minT) / (maxT - minT) * (width - 2 * pad);
+                return padLeft + (t - minT) / (maxT - minT) * innerW;
             }
             function yOf(v) {
                 if (maxV === minV) {
-                    return height / 2;
+                    return padTop + innerH / 2;
                 }
-                return height - pad - (v - minV) / (maxV - minV) * (height - 2 * pad);
+                return height - padBottom - (v - minV) / (maxV - minV) * innerH;
             }
 
+            // Axis lines.
+            svg.appendChild(svgLine(padLeft, padTop, padLeft, height - padBottom, '#ccc'));
+            svg.appendChild(svgLine(padLeft, height - padBottom, width - padRight, height - padBottom, '#ccc'));
+
+            // Y ticks — the data extent (and its midpoint) as real values.
+            var yTickVals = (maxV === minV) ? [minV] : [minV, (minV + maxV) / 2, maxV];
+            yTickVals.forEach(function (v) {
+                var y = yOf(v);
+                svg.appendChild(svgLine(padLeft - 4, y, padLeft, y, '#ccc'));
+                var lbl = fmtAxisNum(v);
+                var t = svgText(padLeft - 6, y, lbl, 'oe-ai-agent-trends-ytick', 'end');
+                t.setAttribute('dominant-baseline', 'middle');
+                t.setAttribute('data-value', lbl);
+                svg.appendChild(t);
+            });
+
             var coords = points.map(function (p, i) {
-                return { x: xOf(times[i]), y: yOf(p.value), p: p };
+                return { x: xOf(times[i]), y: yOf(p.value), t: times[i], p: p };
+            });
+
+            // X ticks — one date label per plotted point, aligned to its x.
+            coords.forEach(function (c, i) {
+                var x = c.x;
+                svg.appendChild(svgLine(x, height - padBottom, x, height - padBottom + 4, '#ccc'));
+                var anchor = (i === 0) ? 'start' : (i === coords.length - 1 ? 'end' : 'middle');
+                var t = svgText(x, height - padBottom + 14, fmtAxisDate(c.p.date), 'oe-ai-agent-trends-xtick', anchor);
+                t.setAttribute('data-date', c.p.date);
+                svg.appendChild(t);
             });
 
             var polyline = document.createElementNS(SVG_NS, 'polyline');
