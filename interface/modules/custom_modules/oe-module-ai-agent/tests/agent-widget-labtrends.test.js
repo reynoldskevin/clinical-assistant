@@ -244,7 +244,7 @@ describe('agent-widget: lab trend chart', () => {
         expect(container.textContent).toMatch(/result|lab/i);
     });
 
-    test('the chart svg fills the container width (responsive)', async () => {
+    test('the chart svg is responsive but capped at 50% of the container width', async () => {
         document.body.innerHTML = SCAFFOLD;
         installFetch(CONTRACT_ROWS);
         loadWidget();
@@ -255,8 +255,29 @@ describe('agent-widget: lab trend chart', () => {
         const svg = el('.oe-ai-agent-trends .oe-ai-agent-trends-chart');
         expect(svg).not.toBeNull();
         expect(svg.getAttribute('width')).toBe('100%');
+        // ...but never wider than half the container.
+        expect(svg.style.maxWidth).toBe('50%');
         // Keeps an internal coordinate system so the point/axis math is unaffected.
         expect(svg.getAttribute('viewBox')).toMatch(/^0 0 \d+ \d+$/);
+    });
+
+    test('x-axis labels show only month/day even when the date carries a time component', async () => {
+        // procedure_result.date is a DATETIME, so real get_results rows carry a
+        // time (e.g. "2021-03-15 09:30:00"); the axis label must drop it.
+        const dtRows = [
+            { ref: 'result:1', result_code: 'x', result_text: 'Sodium', result: '140', units: 'mmol/L', range: '135-145', abnormal: 'no', date: '2021-03-15 09:30:00', result_status: 'final' },
+            { ref: 'result:2', result_code: 'x', result_text: 'Sodium', result: '138', units: 'mmol/L', range: '135-145', abnormal: 'no', date: '2021-08-20 14:05:00', result_status: 'final' }
+        ];
+        document.body.innerHTML = SCAFFOLD;
+        installFetch(dtRows);
+        loadWidget();
+
+        openTrends();
+        await flushAll();
+
+        const xticks = els('.oe-ai-agent-trends .oe-ai-agent-trends-xtick');
+        expect(xticks.map(function (t) { return t.textContent; })).toEqual(['03/15', '08/20']);
+        xticks.forEach(function (t) { expect(t.textContent).not.toMatch(/\d:\d/); });
     });
 
     test('clicking Lab trends while open closes it (toggle), and clicking again re-opens', async () => {
