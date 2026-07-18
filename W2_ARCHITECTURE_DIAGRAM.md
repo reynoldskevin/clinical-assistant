@@ -1,6 +1,6 @@
 # W2_ARCHITECTURE_DIAGRAM — Week 2 additions, visualized
 
-This file **extends** the [README "Architecture Diagram"](README.md#architecture-diagram)
+This file **extends** the [W1 Architecture Diagram](W1_ARCHITECTURE_DIAGRAM.md)
 (the Week-1 component + request-sequence views). It shows where the four Week-2
 capabilities — **document ingestion + VLM extraction**, the **LangGraph
 supervisor/worker graph**, the **hybrid RAG design**, and the **eval-driven CI
