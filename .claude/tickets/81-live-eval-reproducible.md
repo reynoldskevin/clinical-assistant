@@ -1,7 +1,7 @@
 ---
 id: 81
 title: Make the live eval meaningful & reproducible (tool parity + eval JWT + seeded eval patient)
-status: in-progress
+status: ready-for-merge
 depends_on: []
 branch: ticket/81-live-eval-reproducible
 base_branch: main
@@ -26,5 +26,10 @@ NOTE: this is a LOCAL / manual reproducible quality sweep, not a CI gate — `ev
 - [ ] AC4 — the eval cases point at the eval patient and, run live against the seeded chart, the sweep scores >= 0.9 (documented run); graders reject tool-failure refusals (`no_tool_failures`).
 - [ ] AC5 — offline suite stays green; a new `test_eval_harness.py` locks AC1/AC2 offline.
 
-## Progress
-- (a) tool parity + (b) `mint_eval_jwt` implemented in `sidecar/eval.py`; JWT smoke-tested against `read.php` → HTTP 200 (auth works). Diagnosing remaining data-gap failures to scope the seed (c).
+## Outcome
+- (a) tool parity + (b) `mint_eval_jwt` implemented in `sidecar/eval.py`; JWT smoke-tested against `read.php` → HTTP 200. These two fixes ALONE moved the healthy sweep from a spurious **0.68 → 0.955** (the 0.68 was tool-failure refusals passing loose graders), so the heavy dedicated-patient seed proved unnecessary.
+- (c) `evals/seed_eval_patient.sql` seeds pid 999 with a stale-active Warfarin; uc6 repointed → PASS (agent hedges on the past end-date/status-conflict).
+- (d) offline `test_eval_harness.py` locks tool parity + JWT minting (3 tests). Full offline suite green (683).
+- **Final live sweep: 21/22 = 0.955, EXIT 0** (≥ 0.9), driving the real production agent with authenticated reads.
+- **Known limitation:** `uc_wrong_chart` is prompt-driven/emergent (flagged in its own case comment) and pid 1 carries both matching and mismatching intake fixtures, so `get_intake_form` is ambiguous — it flakes run-to-run. Making it deterministic needs a dedicated patient with ONLY a mismatch intake DOCUMENT (document-storage seed), deferred. The sweep clears threshold regardless.
+- **To run locally:** apply `evals/seed_eval_patient.sql`, set `OE_AI_AGENT_SIGNING_KEY` (shared key) + `ANTHROPIC_API_KEY` in the sidecar env, then `python -m eval --live --threshold 0.9`. Stays local/manual — `eval:live` remains non-blocking; the offline gate is the grading gate.
