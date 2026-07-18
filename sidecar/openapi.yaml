@@ -262,6 +262,7 @@ components:
           enum:
             - lab_pdf
             - intake_form
+            - med_list
       required:
         - pid
         - document_id

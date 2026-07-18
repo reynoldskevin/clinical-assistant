@@ -52,7 +52,7 @@ class ExtractRequest(BaseModel):
 
     pid: int
     document_id: int
-    doc_type: Literal["lab_pdf", "intake_form"]
+    doc_type: Literal["lab_pdf", "intake_form", "med_list"]
 
 
 class ExtractResponse(BaseModel):
@@ -230,6 +230,23 @@ class IntakeFact(BaseModel):
     current_medications: Optional[str]
     allergies: Optional[str]
     family_history: Optional[str]
+    source_citation: str = Field(min_length=1)
+
+
+class MedicationListFact(BaseModel):
+    """A patient's current medications extracted from a medication list by the VLM.
+
+    STRICT contract (``extra="forbid"``): unknown fields rejected, every named
+    field a required KEY, groundable-but-absent fields ``null`` (not invented).
+    ``medications`` is a single flat, human-readable string — one medication per
+    entry separated by ``'; '`` — never a nested object or array (the VLM combines
+    the list into one string). ``source_citation`` is required, non-null, and
+    non-empty (``min_length``): grounding is mandatory, empty strings rejected.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    medications: Optional[str]
     source_citation: str = Field(min_length=1)
 
 
