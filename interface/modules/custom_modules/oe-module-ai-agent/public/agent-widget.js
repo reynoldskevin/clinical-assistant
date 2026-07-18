@@ -1456,7 +1456,7 @@
             t.setAttribute('x', String(x));
             t.setAttribute('y', String(y));
             t.setAttribute('class', cls);
-            t.setAttribute('font-size', '9');
+            t.setAttribute('font-size', '4.5');
             t.setAttribute('fill', '#666');
             if (anchor) {
                 t.setAttribute('text-anchor', anchor);
