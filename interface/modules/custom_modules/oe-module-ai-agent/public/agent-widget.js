@@ -811,7 +811,8 @@
             lab_pdf: ['test_name', 'value', 'unit', 'reference_range',
                 'collection_date', 'abnormal_flag', 'source_citation'],
             intake_form: ['demographics', 'chief_concern', 'current_medications',
-                'allergies', 'family_history', 'source_citation']
+                'allergies', 'family_history', 'source_citation'],
+            med_list: ['medications', 'source_citation']
         };
 
         function humanize(key) {

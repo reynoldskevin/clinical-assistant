@@ -65,6 +65,7 @@ final class AgentCard
                 aria-label="Document type">
                 <option value="lab_pdf">Lab PDF</option>
                 <option value="intake_form">Intake form</option>
+                <option value="med_list">Medication List</option>
             </select>
             <input type="file" class="oe-ai-agent-file form-control-file form-control-sm w-auto mr-1"
                 accept="application/pdf,image/*" aria-label="Upload a document">
