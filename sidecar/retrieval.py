@@ -59,6 +59,7 @@ class Chunk:
     section: str
     text: str
     citation: str
+    context: str = ""
 
 
 @dataclass(frozen=True)
@@ -492,6 +493,7 @@ def _parse_markdown(path: str) -> list[Chunk]:
     chunks: list[Chunk] = []
     section: Optional[str] = None
     body: list[str] = []
+    authored_context: Optional[str] = None
 
     def flush() -> None:
         if section is None:
@@ -501,6 +503,10 @@ def _parse_markdown(path: str) -> list[Chunk]:
             return
         citation = f"{title} — {section}"
         chunk_id = _chunk_id(path, section)
+        # A non-empty authored `<!-- context: ... -->` situates the chunk;
+        # otherwise (absent OR blank) fall back to the bare title/section so a
+        # chunk is never left context-less. Used for indexing only, never as body.
+        context = authored_context or f"{title}. {section}."
         chunks.append(
             Chunk(
                 chunk_id=chunk_id,
@@ -508,6 +514,7 @@ def _parse_markdown(path: str) -> list[Chunk]:
                 section=section,
                 text=text,
                 citation=citation,
+                context=context,
             )
         )
 
@@ -517,6 +524,7 @@ def _parse_markdown(path: str) -> list[Chunk]:
             flush()
             section = stripped[3:].strip()
             body = []
+            authored_context = None
             continue
         if section is None:
             # Preamble before the first section — skipped entirely.
@@ -525,12 +533,33 @@ def _parse_markdown(path: str) -> list[Chunk]:
             # Any heading line is excluded from chunk text.
             continue
         if stripped.startswith("<!--"):
-            # HTML comment — excluded from chunk text.
+            # A `<!-- context: ... -->` comment authors the chunk's situating
+            # context (indexing aid); any other comment is just excluded.
+            inner = stripped[len("<!--"):]
+            if inner.endswith("-->"):
+                inner = inner[: -len("-->")]
+            inner = inner.strip()
+            if inner.lower().startswith("context:"):
+                authored_context = inner[len("context:"):].strip()
+            # Either way, comment lines never enter the chunk body text.
             continue
         body.append(line)
 
     flush()
     return chunks
+
+
+def _indexed_text(chunk: Chunk) -> str:
+    """Text used to INDEX a chunk (BM25 + dense): situating context + body.
+
+    Contextual retrieval (Anthropic) prepends each chunk's short situating
+    context to its body before indexing so a query matching the section's topic
+    (but not its body words) still retrieves it. The context is an indexing aid
+    only — the retrieved/citable content stays body-only (``chunk.text``).
+    """
+    if chunk.context:
+        return f"{chunk.context}\n\n{chunk.text}"
+    return chunk.text
 
 
 def _chunk_id(path: str, section: str) -> str:
@@ -566,10 +595,10 @@ def build_index(
     for name in filenames:
         chunks.extend(_parse_markdown(os.path.join(corpus_dir, name)))
 
-    chunk_tokens = [_tokenize(c.text) for c in chunks]
+    chunk_tokens = [_tokenize(_indexed_text(c)) for c in chunks]
     bm25 = BM25(chunk_tokens)
 
-    vectors = embedder.embed([c.text for c in chunks])
+    vectors = embedder.embed([_indexed_text(c) for c in chunks])
     # Module-level reference (not a local alias) so a monkeypatch of
     # ``retrieval.build_vector_index`` is honoured. Offline (no ``QDRANT_URL``)
     # this returns an ``InProcessVectorIndex`` and behaviour is unchanged.
