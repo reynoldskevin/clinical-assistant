@@ -41,6 +41,20 @@ is never shown:
   flag is raised and the answer is blocked. When the record is inactive, or the
   stale-active ``status_conflict`` flag is set, the statement is defensible and
   V7 does not fire.
+* **V8 (unsafe action suggestion, BLOCKING):** the Co-Pilot is read-only and
+  advisory — it surfaces chart facts and never issues a prescriptive clinical
+  directive. A draft that recommends/prescribes/orders a clinical action raises
+  an ``unsafe_action_suggestion`` flag and is blocked, replaced with a tailored
+  ``_ACTION_FALLBACK`` that declines to make recommendations (distinct from the
+  generic "verify" fallback used by V3/V6/V7). The detector is a documented
+  heuristic operating sentence-by-sentence: it matches (a) a recommendation
+  lead-in (``recommend``/``advise``/``suggest``/``consider``) or ``should``
+  immediately followed by a prescriptive action verb, but NOT when negated by a
+  preceding ``don't``/``can't``/``never``/``no`` in the clause; and (b) a
+  sentence-initial imperative base-form action verb (``Start``, ``Administer``,
+  ``Discontinue``, ``Switch``, ...). Base form only, so past-tense/passive
+  phrasing ("was discontinued", "Increased risk") is descriptive and does not
+  fire.
 
 **Deferred (NOT implemented — require clinical sign-off):** V4 (physiologic-range
 checks) and V5 (order/dose classifier). They need validated ranges / a validated
@@ -101,6 +115,69 @@ _MRN_RE = re.compile(
 # and none of the unverified draft's content.
 _SAFE_FALLBACK = "I can't verify that against the record."
 
+# Shown in place of a draft blocked by V8 (an unsafe action suggestion). Unlike
+# _SAFE_FALLBACK it declines to make a clinical recommendation rather than citing
+# an inability to verify — the read-only stance, not a grounding failure.
+_ACTION_FALLBACK = (
+    "I can't provide clinical recommendations — I'm a read-only assistant that "
+    "surfaces chart facts for the clinician to decide."
+)
+
+# V8 prescriptive action verbs. Stems (matched with a trailing ``\w*``) so a verb
+# and its inflections are covered, but *only* the base/imperative form is used by
+# the imperative check below; past-tense/passive detection is handled separately.
+_ACTION_VERB_STEMS = (
+    r"start|increas|decreas|add|prescrib|administ|order|discontinu|switch|"
+    r"taper|titrat|initiat|begin|give|hold|stop"
+)
+
+# V8 (a): a recommendation lead-in (recommend/advise/suggest/consider) or
+# ``should``, immediately followed by a prescriptive action verb. The action verb
+# may be an ``-ing`` gerund ("increasing the dose") or a base form
+# ("prescribe a statin"), so the verb stem alone is enough after the lead-in.
+_RECOMMEND_ACTION_RE = re.compile(
+    r"\b(?:recommend|advise|suggest|consider|should)\w*\s+"
+    r"(?:the\s+patient\s+(?:on|start)\s+|(?:start\w*\s+the\s+patient\s+on\s+)|"
+    rf"(?:{_ACTION_VERB_STEMS})\w*)",
+    re.IGNORECASE,
+)
+
+# V8 negation guard: a negation token appearing before the recommendation
+# lead-in in the same sentence makes it a *refusal to recommend*, not a
+# recommendation ("I don't make treatment recommendations").
+_NEGATION_RE = re.compile(
+    r"\b(?:don't|do not|doesn't|does not|can't|cannot|won't|will not|"
+    r"never|no|not)\b",
+    re.IGNORECASE,
+)
+
+# V8 own-voice guard: the recommend-branch must fire ONLY on the assistant's
+# *own-voice* directive, not on a report of what a third party recommended.
+# The discriminator is the subject/voice preceding the lead-in, not tense:
+#   * fires: sentence-initial imperative ("Consider prescribing…"), or a
+#     first/second-person pronoun subject immediately before the lead-in
+#     ("I recommend…", "we advise…", "you should start…").
+#   * does NOT fire: a third-party noun-phrase subject or reporting frame
+#     precedes the lead-in ("Guidelines recommend…", "The provider
+#     recommended…", "The discharge summary advised…", "Per the note, …").
+# ``_OWN_VOICE_LEADIN_RE`` matches the text immediately before the lead-in
+# (whitespace-trimmed): empty (sentence-initial) or exactly a permitted
+# pronoun subject.
+_OWN_VOICE_LEADIN_RE = re.compile(
+    r"^(?:i|we|you)?$",
+    re.IGNORECASE,
+)
+
+# V8 (b): a sentence-initial imperative — a base-form action verb at the very
+# start of the sentence (optionally after whitespace). Anchored to the base form
+# with a word boundary *after* the stem-completing letters so "Discontinue" fires
+# but "Discontinued" / "Increased" (past tense) does not.
+_IMPERATIVE_ACTION_RE = re.compile(
+    r"^\s*(?:start|administer|prescribe|order|give|increase|decrease|"
+    r"discontinue|stop|hold|switch|taper|titrate|initiate|begin|add)\b",
+    re.IGNORECASE,
+)
+
 
 class VerificationGate:
     """Runs the deterministic V1/V2 grounding checks on a draft answer."""
@@ -139,11 +216,18 @@ class VerificationGate:
         blocking_flags += self._check_status_contradiction(
             draft, citations, retrieved_data
         )
+        blocking_flags += self._check_unsafe_action(draft)
         if blocking_flags:
+            # An unsafe-action block gets the tailored read-only fallback; every
+            # other blocking check keeps the generic "verify" fallback.
+            is_unsafe_action = any(
+                f["code"] == "unsafe_action_suggestion" for f in blocking_flags
+            )
+            fallback = _ACTION_FALLBACK if is_unsafe_action else _SAFE_FALLBACK
             return {
                 "verdict": "blocked",
                 "flags": blocking_flags,
-                "rendered_answer": _SAFE_FALLBACK,
+                "rendered_answer": fallback,
             }
 
         # V4 (physiologic-range) and V5 (order/dose classifier) are DEFERRED —
@@ -264,6 +348,57 @@ class VerificationGate:
         """V6 (BLOCKING): block a raw SSN or MRN/medical-record-number leak."""
         if _SSN_RE.search(draft) or _MRN_RE.search(draft):
             return [{"code": "out_of_scope_phi", "action": "blocked"}]
+        return []
+
+    @staticmethod
+    def _check_unsafe_action(draft: str) -> list[dict[str, Any]]:
+        """V8 (BLOCKING): block a prescriptive clinical directive/recommendation.
+
+        A documented heuristic operating sentence-by-sentence (reusing the
+        module's sentence splitter). A sentence trips V8 when it is either:
+
+        * a **recommendation** in the assistant's *own voice* —
+          ``recommend``/``advise``/``suggest``/``consider``/``should``
+          immediately followed by a prescriptive action verb — where the
+          lead-in is sentence-initial ("Consider prescribing…") or directly
+          preceded by a first/second-person pronoun subject ("I recommend…",
+          "we advise…", "you should start…"). It does NOT fire when a
+          third-party subject or reporting frame precedes the lead-in
+          ("Guidelines recommend…", "The provider recommended…", "Per the
+          note, …") — that is a cited factual report, not a directive. It is
+          also NOT fired when negated by a preceding ``don't``/``can't``/
+          ``never``/``no`` in the same sentence (so "I don't make treatment
+          recommendations" is a refusal, not a recommendation); or
+        * an **imperative** — a sentence-initial base-form action verb
+          (``Start``, ``Administer``, ``Discontinue``, ``Switch``, ...).
+
+        Base form only: past-tense/passive phrasing ("was discontinued in 2020",
+        "Increased risk of bleeding") is descriptive/historical and does not fire.
+        Returns a single ``unsafe_action_suggestion`` flag on the first hit.
+        """
+        protected = _DECIMAL_DOT_RE.sub(_DECIMAL_DOT_PLACEHOLDER, draft)
+        for match in _SENTENCE_RE.finditer(protected):
+            sentence = match.group(0).replace(_DECIMAL_DOT_PLACEHOLDER, ".")
+            # (a) recommendation lead-in + action verb, unless negated earlier.
+            rec = _RECOMMEND_ACTION_RE.search(sentence)
+            if rec is not None:
+                preceding = sentence[: rec.start()]
+                # Own-voice guard: the text between the start of the clause and
+                # the lead-in must be empty (sentence-initial imperative) or a
+                # bare first/second-person pronoun subject. A third-party noun
+                # subject ("Guidelines", "the provider", "The discharge
+                # summary") or a reporting frame ("Per the note, ") means the
+                # draft is reporting someone else's recommendation, not issuing
+                # one — do not fire.
+                lead_in_context = preceding.strip().rstrip(",")
+                own_voice = _OWN_VOICE_LEADIN_RE.match(lead_in_context) is not None
+                if own_voice and _NEGATION_RE.search(preceding) is None:
+                    return [
+                        {"code": "unsafe_action_suggestion", "action": "blocked"}
+                    ]
+            # (b) sentence-initial imperative base-form action verb.
+            if _IMPERATIVE_ACTION_RE.search(sentence.lstrip()):
+                return [{"code": "unsafe_action_suggestion", "action": "blocked"}]
         return []
 
     def _demote_ungrounded(

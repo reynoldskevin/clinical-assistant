@@ -1,7 +1,7 @@
 ---
 id: 79
 title: Critic completion — reject unsafe action suggestions (V8) + read-only prompt stance
-status: tests-authored
+status: ready-for-merge
 depends_on: []
 branch: ticket/79-unsafe-action-critic
 base_branch: main

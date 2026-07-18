@@ -92,7 +92,10 @@ _SYSTEM_PROMPT = (
     "You are a clinical assistant embedded in an electronic health record. "
     "Answer questions about the current patient concisely and accurately, "
     "using the get_patient_summary tool to retrieve the patient's chart when "
-    "clinical detail is needed. Never speculate beyond the retrieved data.\n\n"
+    "clinical detail is needed. Never speculate beyond the retrieved data. "
+    "You are read-only and advisory: do not recommend, prescribe, or order "
+    "treatments or clinical actions — surface the relevant chart facts and let "
+    "the clinician decide.\n\n"
     "Ground every answer in the retrieved records. For each record you rely on, "
     "cite it inline with an [Sn] marker (S1, S2, ...) placed next to the claim "
     "it supports. Give each distinct record its own marker, and place that marker "
@@ -295,17 +298,47 @@ class ClaudeAgent:
         """
         match = _CITATIONS_BLOCK_RE.search(draft)
         if match is None:
-            return draft
+            # No §4 citation format: V1/V2/V3/V7 don't apply and the draft is
+            # returned unchanged (back-compat), but the read-only V8 action check
+            # must still guard an unsafe directive final answer.
+            return self._gate_unsafe_action_only(draft)
 
         try:
             citations = json.loads(match.group(1))
         except (ValueError, TypeError):
-            # Malformed block: strip nothing, gate nothing, return as-is.
-            return draft
+            # Malformed block: strip nothing, gate nothing, but still V8-check.
+            return self._gate_unsafe_action_only(draft)
         if not isinstance(citations, list):
-            return draft
+            return self._gate_unsafe_action_only(draft)
 
         display_text = (draft[: match.start()] + draft[match.end():]).strip()
+        return self._gate_display_text(
+            display_text, citations, retrieved_refs, retrieved_data
+        )
+
+    def _gate_unsafe_action_only(self, draft: str) -> str:
+        """Apply only the read-only V8 action check to an un-gated draft.
+
+        Drafts without a §4 citations block are otherwise returned unchanged
+        (V1/V2/V3/V7 don't apply). But an unsafe *action suggestion* must never
+        reach the clinician regardless of citation format, so the V8 blocking
+        check still runs here: if it fires, the draft is replaced with the
+        tailored read-only fallback; otherwise the draft is returned verbatim.
+        """
+        result = VerificationGate().verify(draft, [], set())
+        if any(f["code"] == "unsafe_action_suggestion" for f in result["flags"]):
+            self._observer.record_verification(result["verdict"])
+            return result["rendered_answer"]
+        return draft
+
+    def _gate_display_text(
+        self,
+        display_text: str,
+        citations: list[dict[str, Any]],
+        retrieved_refs: set[str],
+        retrieved_data: dict[str, dict[str, Any]] | None,
+    ) -> str:
+        """Run the gate on already-extracted display text + citations."""
         result = VerificationGate().verify(
             display_text, citations, retrieved_refs, retrieved_data
         )
