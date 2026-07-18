@@ -1445,8 +1445,8 @@
             var datePart = String(iso).split('T')[0].split(' ')[0];
             var parts = datePart.split('-');
             if (parts.length === 3) {
-                // mm/dd — narrow enough to sit under a point without wrapping.
-                return parts[1] + '/' + parts[2];
+                // mm/dd/yy — rotated vertical, so the year fits without crowding.
+                return parts[1] + '/' + parts[2] + '/' + parts[0].slice(2);
             }
             return datePart;
         }
@@ -1542,11 +1542,15 @@
             });
 
             // X ticks — one date label per plotted point, aligned to its x.
-            coords.forEach(function (c, i) {
+            coords.forEach(function (c) {
                 var x = c.x;
+                var ly = height - padBottom + 6;
                 svg.appendChild(svgLine(x, height - padBottom, x, height - padBottom + 4, '#ccc'));
-                var anchor = (i === 0) ? 'start' : (i === coords.length - 1 ? 'end' : 'middle');
-                var t = svgText(x, height - padBottom + 14, fmtAxisDate(c.p.date), 'oe-ai-agent-trends-xtick', anchor);
+                // Rotated 90deg clockwise about the tick so dense dates read
+                // vertically and never overlap horizontally.
+                var t = svgText(x, ly, fmtAxisDate(c.p.date), 'oe-ai-agent-trends-xtick', 'start');
+                t.setAttribute('dominant-baseline', 'middle');
+                t.setAttribute('transform', 'rotate(90 ' + x + ' ' + ly + ')');
                 t.setAttribute('data-date', c.p.date);
                 svg.appendChild(t);
             });
@@ -1555,7 +1559,7 @@
             polyline.setAttribute('class', 'oe-ai-agent-trends-line');
             polyline.setAttribute('fill', 'none');
             polyline.setAttribute('stroke', '#337ab7');
-            polyline.setAttribute('stroke-width', '2');
+            polyline.setAttribute('stroke-width', '1');
             polyline.setAttribute('points', coords.map(function (c) {
                 return c.x + ',' + c.y;
             }).join(' '));
@@ -1566,7 +1570,7 @@
                 marker.setAttribute('class', 'oe-ai-agent-trends-point');
                 marker.setAttribute('cx', String(c.x));
                 marker.setAttribute('cy', String(c.y));
-                marker.setAttribute('r', '3.5');
+                marker.setAttribute('r', '1.75');
                 marker.setAttribute('data-date', c.p.date);
                 marker.setAttribute('data-value', String(c.p.value));
                 if (c.p.abnormal) {
