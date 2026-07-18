@@ -142,4 +142,33 @@ describe('agent-widget: guideline-evidence citations', () => {
         expect(el('.oe-ai-agent-answer').textContent).not.toContain('openemr:_absence');
         expect(el('.oe-ai-agent-answer').textContent).not.toContain('[openemr');
     });
+
+    test('an unresolved [guideline:...] marker (absent from the map) is stripped, not shown raw', async () => {
+        document.body.innerHTML = SCAFFOLD;
+        const answerFrame = 'event: answer\ndata: ' +
+            JSON.stringify({ answer: 'HbA1c below 7 percent [guideline:diabetes:unmapped]. Warfarin active [S2].' }) + '\n\n';
+        // citations map has the record ref but NOT the guideline ref
+        const doneFrame = 'event: done\ndata: ' +
+            JSON.stringify({ ok: true, correlation_id: 'c', citations: { '2': CITATIONS['2'] } }) + '\n\n';
+        global.fetch = jest.fn(function (url) {
+            const u = String(url);
+            if (u.indexOf('token.php') !== -1) {
+                return Promise.resolve({ ok: true, json: function () { return Promise.resolve({ token: 'jwt' }); } });
+            }
+            if (u.indexOf('/ask') !== -1) {
+                return Promise.resolve(streamOf([answerFrame, doneFrame]));
+            }
+            return Promise.resolve({ ok: true, json: function () { return Promise.resolve({}); } });
+        });
+        loadWidget();
+        ask();
+        await flushAll();
+        const a = el('.oe-ai-agent-answer');
+        // the raw unresolved guideline tag is gone...
+        expect(a.textContent).not.toContain('guideline:diabetes:unmapped');
+        expect(a.textContent).not.toContain('[guideline');
+        // ...and it did NOT become a chip (no source to show), while the record chip stays
+        expect(a.querySelector('.oe-ai-agent-cite[data-n="guideline:diabetes:unmapped"]')).toBeNull();
+        expect(a.querySelector('.oe-ai-agent-cite[data-n="2"]')).not.toBeNull();
+    });
 });

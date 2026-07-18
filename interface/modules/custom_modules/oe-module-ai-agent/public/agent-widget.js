@@ -500,9 +500,12 @@
                     node = makeCiteButton('[S' + sMatch[1] + ']', citations[sMatch[1]], sMatch[1]);
                 } else if (Object.prototype.hasOwnProperty.call(refLabels, content)) {
                     node = makeCiteButton(refLabels[content], citations[content], content);
-                } else if (/^openemr:/.test(content)) {
-                    // Internal absence sentinel — the "(not supported by the
-                    // record)" prose already conveys it; drop the raw marker.
+                } else if (/^guideline:/.test(content) || /^openemr:/.test(content)) {
+                    // A guideline ref that didn't resolve to a source this turn
+                    // (ungrounded / absent from the citations map), or the internal
+                    // "openemr:_absence" sentinel: strip the raw marker rather than
+                    // leave a bare "[guideline:...]" tag in the visible text. We
+                    // never fabricate a source for an unresolved ref.
                     strip = true;
                 }
                 if (node !== null || strip) {
