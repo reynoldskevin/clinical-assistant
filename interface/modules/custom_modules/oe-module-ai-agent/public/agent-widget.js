@@ -1440,13 +1440,15 @@
         }
 
         // Compact date label for the x axis (keeps the full ISO date on data-date).
+        // procedure_result.date is a DATETIME, so strip any time component first.
         function fmtAxisDate(iso) {
-            var parts = String(iso).split('-');
+            var datePart = String(iso).split('T')[0].split(' ')[0];
+            var parts = datePart.split('-');
             if (parts.length === 3) {
                 // mm/dd — narrow enough to sit under a point without wrapping.
                 return parts[1] + '/' + parts[2];
             }
-            return String(iso);
+            return datePart;
         }
 
         function svgText(x, y, text, cls, anchor) {
@@ -1495,6 +1497,8 @@
             svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
             svg.style.display = 'block';
             svg.style.height = 'auto';
+            // Cap the chart at half the container width.
+            svg.style.maxWidth = '50%';
 
             var points = series.points;
             var times = points.map(function (p) { return Date.parse(p.date); });
