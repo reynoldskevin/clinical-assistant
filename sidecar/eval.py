@@ -9,7 +9,9 @@ carries a list of one-key grader specs applied against the runner output.
 from __future__ import annotations
 
 import argparse
+import base64
 import glob
+import json
 import os
 import sys
 from dataclasses import dataclass
@@ -201,24 +203,91 @@ def build_offline_runner() -> Runner:
     return runner
 
 
+def _b64url(raw: bytes) -> str:
+    """URL-safe base64 without padding (JWT segment encoding)."""
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+
+def mint_eval_jwt(pid: int, signing_key: str, *, ttl_seconds: int = 300) -> str:
+    """Mint a pid-scoped HS256 boundary token matching ScopedTokenService.
+
+    The app-side boundary (summary.php / read.php) verifies an HS256 JWT with the
+    shared signing key and checks ``aud`` + ``pid``. This mirrors that payload so
+    the live eval can authenticate its chart reads without a browser session. It
+    is eval-only tooling (stdlib HMAC), never used in the request path.
+    """
+    import hashlib
+    import hmac
+    import time
+
+    header = {"typ": "JWT", "alg": "HS256"}
+    now = int(time.time())
+    payload = {
+        "cid": 1,
+        "usr": "eval",
+        "pid": int(pid),
+        "purpose": "eval",
+        "aud": "oe-ai-agent-boundary",
+        "iat": now,
+        "exp": now + ttl_seconds,
+        "scope": "read",
+    }
+    signing_input = (
+        _b64url(json.dumps(header, separators=(",", ":")).encode())
+        + "."
+        + _b64url(json.dumps(payload, separators=(",", ":")).encode())
+    )
+    sig = hmac.new(signing_key.encode(), signing_input.encode(), hashlib.sha256).digest()
+    return signing_input + "." + _b64url(sig)
+
+
+def build_eval_agent_tools(chart_boundary, message_creator, observer) -> list:
+    """Assemble the SAME extra-tool set as ``server.default_agent_builder``.
+
+    Kept as a standalone helper so a parity test can assert the eval agent wires
+    every production tool (encounter, results, medications, search, documents,
+    get_intake_form, evidence_retriever) — the live sweep must exercise the real
+    agent, not an impoverished subset. Pure construction; safe to call offline
+    with fakes (no network, no API key).
+    """
+    from factory import (
+        build_documents_tools,
+        build_encounter_tools,
+        build_intake_tool,
+        build_medications_tool,
+        build_results_tool,
+        build_search_tool,
+    )
+    from retrieval import build_evidence_retriever_tool, get_guideline_index
+
+    return (
+        build_encounter_tools(chart_boundary)
+        + [
+            build_results_tool(chart_boundary),
+            build_medications_tool(chart_boundary),
+            build_search_tool(chart_boundary),
+        ]
+        + build_documents_tools(chart_boundary)
+        + [
+            build_intake_tool(chart_boundary, message_creator),
+            build_evidence_retriever_tool(get_guideline_index(), tracer=observer),
+        ]
+    )
+
+
 def build_live_runner() -> Runner:
     """Construct a runner that drives the REAL ClaudeAgent over the boundary.
 
     Everything anthropic/network-related is imported lazily INSIDE this function
-    so the offline path never needs the SDK or an API key. Configuration mirrors
-    ``server.py``'s ``main``: the API key and summary/read URLs come from the
-    environment. A fresh agent is built per case (closured message-creator).
+    so the offline path never needs the SDK or an API key. The agent is built with
+    the SAME tool set as ``server.py``'s ``default_agent_builder`` (encounter,
+    results, medications, search, documents, get_intake_form, evidence_retriever)
+    so the sweep exercises the production agent, not an impoverished subset. Chart
+    reads authenticate with a per-pid token: an explicit ``OE_AI_AGENT_EVAL_JWT``
+    if given, else one minted from ``OE_AI_AGENT_SIGNING_KEY`` (the shared key).
     """
     from agent import ClaudeAgent
-    from factory import (
-        build_boundary,
-        build_chart_boundary,
-        build_encounter_tools,
-        build_medications_tool,
-        build_message_creator,
-        build_results_tool,
-        build_search_tool,
-    )
+    from factory import build_boundary, build_chart_boundary, build_message_creator
     from observability import TraceCollector
 
     api_key = os.environ.get("ANTHROPIC_API_KEY")
@@ -230,11 +299,20 @@ def build_live_runner() -> Runner:
         "http://localhost:8300/interface/modules/custom_modules/oe-module-ai-agent/public/summary.php",
     )
     read_url = os.environ.get("OE_AI_AGENT_READ_URL") or summary_url.replace("summary.php", "read.php")
-    jwt = os.environ.get("OE_AI_AGENT_EVAL_JWT", "")
+    static_jwt = os.environ.get("OE_AI_AGENT_EVAL_JWT", "")
+    signing_key = os.environ.get("OE_AI_AGENT_SIGNING_KEY", "")
     max_tool_calls = int(os.environ.get("OE_AI_AGENT_MAX_TOOL_CALLS") or "8")
     message_creator = build_message_creator(api_key)
 
+    def _jwt_for(pid: int) -> str:
+        if static_jwt:
+            return static_jwt
+        if signing_key:
+            return mint_eval_jwt(pid, signing_key)
+        return ""
+
     def runner(question: str, pid: int) -> tuple[str, dict]:
+        jwt = _jwt_for(pid)
         boundary = build_boundary(summary_url, jwt)
         chart_boundary = build_chart_boundary(read_url, jwt)
         observer = TraceCollector()
@@ -242,12 +320,7 @@ def build_live_runner() -> Runner:
             message_creator,
             boundary,
             observer=observer,
-            extra_tools=build_encounter_tools(chart_boundary)
-            + [
-                build_results_tool(chart_boundary),
-                build_medications_tool(chart_boundary),
-                build_search_tool(chart_boundary),
-            ],
+            extra_tools=build_eval_agent_tools(chart_boundary, message_creator, observer),
             max_tool_calls=max_tool_calls,
         )
         answer = agent.run(question, pid)

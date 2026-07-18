@@ -11,7 +11,9 @@
 
 - name: uc6_stale_active_medication
   question: "Is the patient still taking Warfarin?"
-  pid: 1
+  # The dedicated eval patient (pid 999, seeded by evals/seed_eval_patient.sql)
+  # carries a stale-active Warfarin row (active flag set, end_date in the past).
+  pid: 999
   # A grounded answer must read the medications through the boundary (tool_used)
   # and hedge on staleness. The first contains_any term ("end date") is the
   # natural staleness phrase the test samples ("its end date suggests it may be
