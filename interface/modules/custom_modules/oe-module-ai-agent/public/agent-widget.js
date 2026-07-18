@@ -447,6 +447,20 @@
     // text-node / button / text-node fragments — never innerHTML, and buttons we
     // create are never re-walked.
     function enhanceCitations(container, citations) {
+        // Pre-assign a compact "[Gk]" label to each guideline-evidence source.
+        // These map keys are refs (e.g. "guideline:diabetes:glycemic-targets"),
+        // not [Sn] numbers, and the model cites them inline with the raw ref in
+        // brackets. Number them in map order so the same ref gets the same label
+        // everywhere in the answer.
+        var refLabels = {};
+        var g = 0;
+        Object.keys(citations).forEach(function (key) {
+            if (/^guideline:/.test(key)) {
+                g += 1;
+                refLabels[key] = '[G' + g + ']';
+            }
+        });
+
         var textNodes = [];
         (function collect(node) {
             for (var child = node.firstChild; child; child = child.nextSibling) {
@@ -458,9 +472,14 @@
             }
         })(container);
 
+        // Any bracketed token: [Sn] record markers, [guideline:...] evidence
+        // markers, or [openemr:...] internal sentinels. Only tokens backed by the
+        // citations map (or an internal sentinel) are transformed; every other
+        // bracketed run is left as plain text.
+        var re = /\[([^\]]+)\]/g;
         textNodes.forEach(function (textNode) {
             var value = textNode.nodeValue;
-            var re = /\[S(\d+)\]/g;
+            re.lastIndex = 0;
             var match = re.exec(value);
             if (!match) {
                 return;
@@ -473,12 +492,26 @@
             var lastIndex = 0;
             var replaced = false;
             do {
-                var n = match[1];
-                if (Object.prototype.hasOwnProperty.call(citations, n)) {
+                var content = match[1];
+                var sMatch = /^S(\d+)$/.exec(content);
+                var node = null;      // a citation button to insert, or...
+                var strip = false;    // ...true to drop the marker entirely
+                if (sMatch && Object.prototype.hasOwnProperty.call(citations, sMatch[1])) {
+                    node = makeCiteButton('[S' + sMatch[1] + ']', citations[sMatch[1]], sMatch[1]);
+                } else if (Object.prototype.hasOwnProperty.call(refLabels, content)) {
+                    node = makeCiteButton(refLabels[content], citations[content], content);
+                } else if (/^openemr:/.test(content)) {
+                    // Internal absence sentinel — the "(not supported by the
+                    // record)" prose already conveys it; drop the raw marker.
+                    strip = true;
+                }
+                if (node !== null || strip) {
                     if (match.index > lastIndex) {
                         frag.appendChild(document.createTextNode(value.slice(lastIndex, match.index)));
                     }
-                    frag.appendChild(makeCiteButton(n, citations[n]));
+                    if (node !== null) {
+                        frag.appendChild(node);
+                    }
                     lastIndex = match.index + match[0].length;
                     replaced = true;
                 }
@@ -495,12 +528,12 @@
         });
     }
 
-    function makeCiteButton(n, citation) {
+    function makeCiteButton(label, citation, dataN) {
         var btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'oe-ai-agent-cite';
-        btn.setAttribute('data-n', n);
-        btn.textContent = '[S' + n + ']';
+        btn.setAttribute('data-n', dataN);
+        btn.textContent = label;
         btn.style.fontSize = '0.85em';
         btn.style.border = '0';
         btn.style.background = 'transparent';
