@@ -131,6 +131,34 @@ final class ChartReadServiceResultsTest extends TestCase
         $this->assertArrayHasKey('result_status', $hba1c);
     }
 
+    public function testGetResultsRowMatchesTheSharedLabTrendContract(): void
+    {
+        // T77 contract: the lab-trend chart widget (agent-widget.js) consumes
+        // get_results over the browser→read.php wire using the SHARED fixture
+        // tests/fixtures/get_results_contract.json. This pins the PRODUCER side —
+        // every key the fixture (and therefore the JS consumer) relies on must be
+        // present on a real getResults row, so a shape change here breaks the JS
+        // consumer test rather than silently diverging.
+        $fixturePath = __DIR__
+            . '/../../../../../../interface/modules/custom_modules/oe-module-ai-agent'
+            . '/tests/fixtures/get_results_contract.json';
+        $fixture = json_decode((string) file_get_contents($fixturePath), true);
+        $this->assertIsArray($fixture);
+        $this->assertNotEmpty($fixture);
+
+        $results = (new PatientSummaryService($this->db))->getResults(1);
+        $this->assertNotEmpty($results);
+        $realKeys = array_keys($results[0]);
+
+        foreach (array_keys($fixture[0]) as $contractKey) {
+            $this->assertContains(
+                $contractKey,
+                $realKeys,
+                "getResults must expose the '{$contractKey}' key the lab-trend contract fixture relies on"
+            );
+        }
+    }
+
     public function testGetResultsIsPatientScoped(): void
     {
         // Patient 2's abnormal potassium (9.9) must never surface for patient 1.

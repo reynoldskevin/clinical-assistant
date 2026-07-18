@@ -110,6 +110,7 @@
     var tokenUrl = new URL('token.php', document.currentScript ? document.currentScript.src : window.location.href).href;
     var uploadUrl = new URL('upload.php', document.currentScript ? document.currentScript.src : window.location.href).href;
     var persistUrl = new URL('persist.php', document.currentScript ? document.currentScript.src : window.location.href).href;
+    var readUrl = new URL('read.php', document.currentScript ? document.currentScript.src : window.location.href).href;
     var sidecarUrl = root.dataset.sidecarUrl || '/ai-agent-sidecar/ask';
     // The SSE endpoint is derived from the same base as the buffered /ask URL, so
     // a deployment that overrides data-sidecar-url need only set it once.
@@ -1367,6 +1368,331 @@
                 if (uploadSubmit) {
                     uploadSubmit.disabled = false;
                 }
+            });
+        });
+    })();
+
+    // Lab trends: on demand, fetch the patient's numeric lab results via the
+    // read.php boundary (op:get_results), group them by test name, and render a
+    // dependency-free inline SVG line chart for a selected test. Null-guarded so
+    // scaffolds without the trigger button never throw on load.
+    (function wireTrends() {
+        var trendsBtn = root.querySelector('.oe-ai-agent-trends-btn');
+        var trendsBox = root.querySelector('.oe-ai-agent-trends');
+        if (!trendsBtn || !trendsBox) {
+            return;
+        }
+
+        var SVG_NS = 'http://www.w3.org/2000/svg';
+        // A "positive" abnormal flag; anything else (no/""/normal) is not abnormal.
+        var ABNORMAL = { high: 1, low: 1, yes: 1, abnormal: 1 };
+
+        function isAbnormal(flag) {
+            return ABNORMAL[String(flag || '').toLowerCase()] === 1;
+        }
+
+        // Pure grouping transform: rows -> sorted array of series. Each series is
+        // {name, units, range, points:[{date, value, abnormal}]} with points
+        // date-ascending. Rows with a non-finite value or empty/unparseable date
+        // are dropped; only tests with >=1 surviving point are kept.
+        function groupSeries(rows) {
+            var byName = {};
+            (rows || []).forEach(function (row) {
+                var name = row && row.result_text;
+                if (!name) {
+                    return;
+                }
+                var value = Number(row.result);
+                if (!isFinite(value) || row.result === '' || row.result === null) {
+                    return;
+                }
+                var date = String(row.date || '');
+                if (date === '' || isNaN(Date.parse(date))) {
+                    return;
+                }
+                if (!byName[name]) {
+                    byName[name] = {
+                        name: name,
+                        units: row.units || '',
+                        range: row.range || '',
+                        points: []
+                    };
+                }
+                byName[name].points.push({
+                    date: date,
+                    value: value,
+                    abnormal: isAbnormal(row.abnormal)
+                });
+            });
+
+            return Object.keys(byName).sort().map(function (name) {
+                var series = byName[name];
+                series.points.sort(function (a, b) {
+                    return Date.parse(a.date) - Date.parse(b.date);
+                });
+                return series;
+            });
+        }
+
+        // Format an axis value: trim to at most 2 decimals, drop trailing zeros.
+        function fmtAxisNum(v) {
+            return String(Math.round(v * 100) / 100);
+        }
+
+        // Compact date label for the x axis (keeps the full ISO date on data-date).
+        // procedure_result.date is a DATETIME, so strip any time component first.
+        function fmtAxisDate(iso) {
+            var datePart = String(iso).split('T')[0].split(' ')[0];
+            var parts = datePart.split('-');
+            if (parts.length === 3) {
+                // mm/dd/yy — rotated vertical, so the year fits without crowding.
+                return parts[1] + '/' + parts[2] + '/' + parts[0].slice(2);
+            }
+            return datePart;
+        }
+
+        function svgText(x, y, text, cls, anchor) {
+            var t = document.createElementNS(SVG_NS, 'text');
+            t.setAttribute('x', String(x));
+            t.setAttribute('y', String(y));
+            t.setAttribute('class', cls);
+            t.setAttribute('font-size', '4.5');
+            t.setAttribute('fill', '#666');
+            if (anchor) {
+                t.setAttribute('text-anchor', anchor);
+            }
+            t.textContent = text;
+            return t;
+        }
+
+        function svgLine(x1, y1, x2, y2, stroke) {
+            var l = document.createElementNS(SVG_NS, 'line');
+            l.setAttribute('x1', String(x1));
+            l.setAttribute('y1', String(y1));
+            l.setAttribute('x2', String(x2));
+            l.setAttribute('y2', String(y2));
+            l.setAttribute('stroke', stroke);
+            l.setAttribute('stroke-width', '1');
+            return l;
+        }
+
+        // Render the SVG line chart + point markers + accurate X/Y axes for one
+        // series. Ticks are placed with the SAME xOf/yOf scale as the points, so a
+        // value/date label sits exactly where its data point does.
+        function buildChart(series) {
+            var width = 340;
+            var height = 168;
+            var padLeft = 42;
+            var padRight = 14;
+            var padTop = 12;
+            var padBottom = 30;
+            var innerW = width - padLeft - padRight;
+            var innerH = height - padTop - padBottom;
+            var svg = document.createElementNS(SVG_NS, 'svg');
+            svg.setAttribute('class', 'oe-ai-agent-trends-chart');
+            // Responsive: the SVG stretches to the container's full width while the
+            // viewBox keeps a fixed internal coordinate system for the point/axis math.
+            svg.setAttribute('width', '100%');
+            svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+            svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+            svg.style.display = 'block';
+            svg.style.height = 'auto';
+            // Cap the chart at half the container width.
+            svg.style.maxWidth = '50%';
+
+            var points = series.points;
+            var times = points.map(function (p) { return Date.parse(p.date); });
+            var values = points.map(function (p) { return p.value; });
+            var minT = Math.min.apply(null, times);
+            var maxT = Math.max.apply(null, times);
+            var minV = Math.min.apply(null, values);
+            var maxV = Math.max.apply(null, values);
+
+            function xOf(t) {
+                if (maxT === minT) {
+                    return padLeft + innerW / 2;
+                }
+                return padLeft + (t - minT) / (maxT - minT) * innerW;
+            }
+            function yOf(v) {
+                if (maxV === minV) {
+                    return padTop + innerH / 2;
+                }
+                return height - padBottom - (v - minV) / (maxV - minV) * innerH;
+            }
+
+            // Axis lines.
+            svg.appendChild(svgLine(padLeft, padTop, padLeft, height - padBottom, '#ccc'));
+            svg.appendChild(svgLine(padLeft, height - padBottom, width - padRight, height - padBottom, '#ccc'));
+
+            // Y ticks — the data extent (and its midpoint) as real values.
+            var yTickVals = (maxV === minV) ? [minV] : [minV, (minV + maxV) / 2, maxV];
+            yTickVals.forEach(function (v) {
+                var y = yOf(v);
+                svg.appendChild(svgLine(padLeft - 4, y, padLeft, y, '#ccc'));
+                var lbl = fmtAxisNum(v);
+                var t = svgText(padLeft - 6, y, lbl, 'oe-ai-agent-trends-ytick', 'end');
+                t.setAttribute('dominant-baseline', 'middle');
+                t.setAttribute('data-value', lbl);
+                svg.appendChild(t);
+            });
+
+            var coords = points.map(function (p, i) {
+                return { x: xOf(times[i]), y: yOf(p.value), t: times[i], p: p };
+            });
+
+            // X ticks — one date label per plotted point, aligned to its x.
+            coords.forEach(function (c) {
+                var x = c.x;
+                var ly = height - padBottom + 6;
+                svg.appendChild(svgLine(x, height - padBottom, x, height - padBottom + 4, '#ccc'));
+                // Rotated 90deg clockwise about the tick so dense dates read
+                // vertically and never overlap horizontally.
+                var t = svgText(x, ly, fmtAxisDate(c.p.date), 'oe-ai-agent-trends-xtick', 'start');
+                t.setAttribute('dominant-baseline', 'middle');
+                t.setAttribute('transform', 'rotate(90 ' + x + ' ' + ly + ')');
+                t.setAttribute('data-date', c.p.date);
+                svg.appendChild(t);
+            });
+
+            var polyline = document.createElementNS(SVG_NS, 'polyline');
+            polyline.setAttribute('class', 'oe-ai-agent-trends-line');
+            polyline.setAttribute('fill', 'none');
+            polyline.setAttribute('stroke', '#337ab7');
+            polyline.setAttribute('stroke-width', '1');
+            polyline.setAttribute('points', coords.map(function (c) {
+                return c.x + ',' + c.y;
+            }).join(' '));
+            svg.appendChild(polyline);
+
+            coords.forEach(function (c) {
+                var marker = document.createElementNS(SVG_NS, 'circle');
+                marker.setAttribute('class', 'oe-ai-agent-trends-point');
+                marker.setAttribute('cx', String(c.x));
+                marker.setAttribute('cy', String(c.y));
+                marker.setAttribute('r', '1.75');
+                marker.setAttribute('data-date', c.p.date);
+                marker.setAttribute('data-value', String(c.p.value));
+                if (c.p.abnormal) {
+                    marker.setAttribute('data-abnormal', '1');
+                    marker.setAttribute('fill', '#d9534f');
+                } else {
+                    marker.setAttribute('fill', '#337ab7');
+                }
+                svg.appendChild(marker);
+            });
+
+            return svg;
+        }
+
+        // Render (or re-render) the chart area for the selected series. Clears the
+        // chart+range, keeps the selector, and draws the newly-selected test.
+        function renderSelected(series) {
+            var svg = buildChart(series);
+
+            var range = document.createElement('div');
+            range.className = 'oe-ai-agent-trends-range small text-muted mt-1';
+            range.textContent = series.range
+                ? ('Reference range: ' + series.range
+                    + (series.units ? ' ' + series.units : ''))
+                : 'Reference range: not available';
+
+            return { svg: svg, range: range };
+        }
+
+        function render(seriesList) {
+            trendsBox.textContent = '';
+
+            if (!seriesList.length) {
+                var empty = document.createElement('div');
+                empty.className = 'small text-muted';
+                empty.textContent = 'No numeric lab results to chart.';
+                trendsBox.appendChild(empty);
+                return;
+            }
+
+            var select = document.createElement('select');
+            select.className = 'oe-ai-agent-trends-select custom-select custom-select-sm w-auto';
+            seriesList.forEach(function (series) {
+                var option = document.createElement('option');
+                option.value = series.name;
+                option.textContent = series.name;
+                select.appendChild(option);
+            });
+            select.value = seriesList[0].name;
+            trendsBox.appendChild(select);
+
+            var chartWrap = document.createElement('div');
+            chartWrap.className = 'oe-ai-agent-trends-chart-wrap';
+            trendsBox.appendChild(chartWrap);
+
+            function draw(name) {
+                var series = seriesList.filter(function (s) {
+                    return s.name === name;
+                })[0] || seriesList[0];
+                chartWrap.textContent = '';
+                var parts = renderSelected(series);
+                chartWrap.appendChild(parts.svg);
+                chartWrap.appendChild(parts.range);
+            }
+
+            select.addEventListener('change', function () {
+                draw(select.value);
+            });
+
+            draw(select.value);
+        }
+
+        function showError() {
+            trendsBox.textContent = '';
+            var err = document.createElement('div');
+            err.className = 'small text-danger';
+            err.textContent = "Couldn't load lab trends.";
+            trendsBox.appendChild(err);
+        }
+
+        var trendsOpen = false;
+
+        trendsBtn.addEventListener('click', function () {
+            // Toggle: a second click while the chart is open closes it.
+            if (trendsOpen) {
+                trendsBox.textContent = '';
+                trendsOpen = false;
+                trendsBtn.setAttribute('aria-expanded', 'false');
+                return;
+            }
+            trendsBtn.disabled = true;
+            mintToken().then(function (jwt) {
+                return fetch(readUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + jwt
+                    },
+                    body: JSON.stringify({
+                        op: 'get_results',
+                        pid: parseInt(root.dataset.pid, 10),
+                        params: {}
+                    })
+                });
+            }).then(function (res) {
+                if (!res.ok) {
+                    throw new Error('read failed');
+                }
+                return res.json();
+            }).then(function (rows) {
+                render(groupSeries(Array.isArray(rows) ? rows : []));
+                trendsOpen = true;
+                trendsBtn.setAttribute('aria-expanded', 'true');
+            }).catch(function () {
+                // Never surface internal detail (e.g. the token); a friendly
+                // message only. The message stays open so a second click clears it.
+                showError();
+                trendsOpen = true;
+                trendsBtn.setAttribute('aria-expanded', 'true');
+            }).finally(function () {
+                trendsBtn.disabled = false;
             });
         });
     })();
