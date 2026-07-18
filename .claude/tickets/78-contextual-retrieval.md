@@ -1,7 +1,7 @@
 ---
 id: 78
 title: Contextual retrieval — index each chunk with a situating context (BM25 + dense)
-status: tests-authored
+status: ready-for-merge
 depends_on: []
 branch: ticket/78-contextual-retrieval
 base_branch: main
