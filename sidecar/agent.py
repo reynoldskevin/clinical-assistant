@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 from citation_gate import CitationGate
 from contracts import EmptyToolInput
-from observability import NullObserver
+from observability import NullObserver, NullTracer
 from verification import (
     _DECIMAL_DOT_PLACEHOLDER,
     _DECIMAL_DOT_RE,
@@ -224,12 +224,14 @@ class ClaudeAgent:
         extra_tools: list[ToolSpec] | None = None,
         max_tool_calls: int = _DEFAULT_MAX_TOOL_CALLS,
         correlation_id: str | None = None,
+        tracer: Any = None,
     ) -> None:
         self._message_creator = message_creator
         self._boundary = boundary
         self._model = model
         self._max_tokens = max_tokens
         self._observer = observer or NullObserver()
+        self._tracer = tracer or NullTracer()
         self._correlation_id = correlation_id
         # Injectable tool registry keyed by name, each carrying its handler.
         self._extra_tools = list(extra_tools or [])
@@ -252,6 +254,24 @@ class ClaudeAgent:
     def correlation_id(self) -> str | None:
         """The correlation id threaded through this agent invocation, if any."""
         return self._correlation_id
+
+    def _tool_span(self, name: str) -> Any:
+        """Open a Braintrust tool span, degrading to a no-op if the tracer breaks.
+
+        Observability must never break the request path: if the injected
+        tracer's ``tool_span`` raises, fall back to a null context manager so
+        the tool still executes and the turn completes.
+
+        Callers MUST keep the returned ``with`` inside the tool's own
+        ``try/except Exception`` (see the tool loop): that enclosing guard is
+        what absorbs a raising span ``__enter__``/``__exit__`` — do not move the
+        ``with`` outside the ``try`` or a span op could escape into the request.
+        """
+        try:
+            return self._tracer.tool_span(name)
+        except Exception:  # observability must never break the request path
+            import contextlib
+            return contextlib.nullcontext()
 
     def _tools(self) -> list[dict[str, Any]]:
         return [
@@ -640,7 +660,8 @@ class ClaudeAgent:
                 if block.name == "get_patient_summary":
                     # Fixed session pid — ignore any model-supplied input.
                     try:
-                        summary = self._boundary(pid)
+                        with self._tool_span("get_patient_summary"):
+                            summary = self._boundary(pid)
                     except Exception:
                         # Record the failure and feed an error result back so the
                         # model can respond; the loop must not crash.
@@ -674,7 +695,8 @@ class ClaudeAgent:
                     # supplies only tool_input. Failures become a tool error, not
                     # a crash — mirroring the summary error path above.
                     try:
-                        result = handler(pid, block.input)
+                        with self._tool_span(block.name):
+                            result = handler(pid, block.input)
                     except Exception:
                         tool_failure_seen = True
                         self._observer.record_tool_call(block.name, False)

@@ -124,6 +124,15 @@ def build_tracer() -> Any:
 
                     return contextlib.nullcontext()
 
+            def tool_span(self, name: str) -> Any:
+                try:
+                    return braintrust.start_span(name=name, type="tool")
+                except Exception:  # noqa: BLE001 - a span op must never break the turn
+                    logging.getLogger("sidecar").exception("Braintrust tool span failed; continuing without it")
+                    import contextlib
+
+                    return contextlib.nullcontext()
+
         return _BraintrustTracer()
     except Exception:  # noqa: BLE001 - never let telemetry wiring fail the request path
         logging.getLogger("sidecar").exception("Braintrust tracer init failed; continuing without it")

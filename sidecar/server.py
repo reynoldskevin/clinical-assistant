@@ -486,6 +486,10 @@ def default_agent_builder(
     # over to the extraction fallback models when the primary is overloaded.
     extract_model = _extract_model()
     extract_fallbacks = _extract_fallback_models()
+    # Built once here (init_logger is idempotent); passed into every agent so
+    # each tool execution opens a Braintrust type="tool" span for the built-in
+    # tool-execution charts. Guarded — degrades to a NullTracer with no key.
+    tracer = build_tracer()
 
     def build(pid: int, jwt: str) -> ClaudeAgent:
         cid = new_correlation_id()
@@ -512,6 +516,7 @@ def default_agent_builder(
             ],
             max_tool_calls=max_tool_calls,
             correlation_id=cid,
+            tracer=tracer,
         )
 
     return build

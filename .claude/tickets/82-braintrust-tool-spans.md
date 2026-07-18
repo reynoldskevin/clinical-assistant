@@ -1,7 +1,7 @@
 ---
 id: 82
 title: Emit per-tool Braintrust spans (tool executions / error rate / duration)
-status: tests-authored
+status: ready-for-merge
 depends_on: []
 branch: ticket/82-braintrust-tool-spans
 base_branch: main
