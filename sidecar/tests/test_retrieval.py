@@ -24,6 +24,7 @@ from retrieval import (
     RetrievedChunk,
     StubEmbeddingClient,
     StubReranker,
+    _parse_markdown,
     build_evidence_retriever_tool,
     build_index,
     build_reranker,
@@ -312,6 +313,98 @@ def test_cohere_rerank_live_smoke():
     )
     assert len(out) == 3
     assert any("Warfarin" in r.citation for r in out)
+
+
+# --- T78: chunk-side contextual retrieval (Anthropic "Contextual Retrieval") --
+
+def test_every_corpus_chunk_carries_a_nonempty_context():
+    # AC1: each chunk gains a situating context used only for indexing.
+    index = build_index()
+    for c in index.chunks:
+        assert isinstance(c.context, str)
+        assert c.context.strip() != ""
+
+
+def test_parse_reads_an_authored_context_comment(tmp_path):
+    # AC2: an authored `<!-- context: ... -->` inside a section becomes the
+    # chunk's context (exact, trimmed) and is NOT part of the chunk body text.
+    md = tmp_path / "g.md"
+    md.write_text(
+        "# Sample Guideline\n\n"
+        "## First Section\n\n"
+        "<!-- context: This section situates dosing within renal adjustment. -->\n"
+        "Body sentence one.\n",
+        encoding="utf-8",
+    )
+    chunks = _parse_markdown(str(md))
+    assert len(chunks) == 1
+    assert chunks[0].context == "This section situates dosing within renal adjustment."
+    # the context comment must not leak into the indexable/citable body
+    assert chunks[0].text == "Body sentence one."
+    assert "context:" not in chunks[0].text
+
+
+def test_parse_falls_back_to_title_and_section_context(tmp_path):
+    # AC3: with no authored context, fall back to exactly "{title}. {section}.".
+    md = tmp_path / "g.md"
+    md.write_text(
+        "# Sample Guideline\n\n"
+        "## Second Section\n\n"
+        "Only a body, no authored context here.\n",
+        encoding="utf-8",
+    )
+    chunks = _parse_markdown(str(md))
+    assert len(chunks) == 1
+    assert chunks[0].context == "Sample Guideline. Second Section."
+
+
+def test_corpus_authors_context_beyond_the_bare_fallback():
+    # AC4: the committed corpus actually authors situating sentences — at least
+    # one chunk's context differs from the pure title/section fallback.
+    index = build_index()
+    assert any(
+        c.context.strip() != f"{c.source_title}. {c.section}."
+        for c in index.chunks
+    )
+
+
+def test_indexing_uses_context_so_a_context_only_term_retrieves_the_chunk(tmp_path):
+    # AC5: a sentinel token that appears ONLY in one chunk's authored context and
+    # in NO body. Body-only indexing (the old behaviour) could never retrieve it;
+    # contextual indexing (BM25 + dense over context+body) surfaces it.
+    (tmp_path / "a.md").write_text(
+        "# Guide A\n\n"
+        "## Topic One\n\n"
+        "<!-- context: zztargetsentinel anchors this section. -->\n"
+        "Alpha bravo charlie body without the sentinel.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "b.md").write_text(
+        "# Guide B\n\n"
+        "## Topic Two\n\n"
+        "Delta echo foxtrot unrelated body.\n",
+        encoding="utf-8",
+    )
+    index = build_index(str(tmp_path))
+    # the sentinel lives ONLY in the authored context, never in a chunk body
+    assert all("zztargetsentinel" not in c.text for c in index.chunks)
+    topic_one = next(c for c in index.chunks if c.section == "Topic One")
+    assert "zztargetsentinel" in topic_one.context
+
+    out = hybrid_retrieve("zztargetsentinel", index, k=1)
+    assert len(out) == 1
+    assert out[0].chunk.section == "Topic One"
+
+
+def test_context_does_not_leak_into_retrieved_text_or_citation():
+    # AC6: context is an indexing aid only — the citable/returned content stays
+    # body-only, so the T48 citation/answer contracts are unchanged.
+    index = build_index()
+    warfarin = next(
+        c for c in index.chunks if c.section == "Warfarin INR Monitoring"
+    )
+    assert warfarin.context not in warfarin.text
+    assert warfarin.citation == f"{warfarin.source_title} — {warfarin.section}"
 
 
 # --- helpers ------------------------------------------------------------------
