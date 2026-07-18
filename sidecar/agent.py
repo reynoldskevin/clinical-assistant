@@ -36,6 +36,11 @@ _CITATIONS_BLOCK_RE = re.compile(
     re.DOTALL,
 )
 
+# Matches an inline raw guideline marker, e.g. ``[guideline:diabetes:targets]``,
+# capturing the ref (``guideline:...``) so it can be deterministically grounded
+# into ``citation_sources`` independent of the model's ```citations block.
+_INLINE_GUIDELINE_RE = re.compile(r"\[(guideline:[^\]]+)\]")
+
 # The response object returned by the message-creator (SDK Message shape).
 MessageResponse = Any
 
@@ -416,6 +421,25 @@ class ClaudeAgent:
             [{"n": n, "ref": ref} for n, ref in surviving.items()],
             retrieved_data,
         )
+
+        # Deterministically ground every inline ``[guideline:<ref>]`` marker whose
+        # ref was actually retrieved this turn, independent of whether the model
+        # declared it in the ```citations block. Keyed by the exact ref string so
+        # it never clobbers a number-keyed record entry above. A cited ref that was
+        # not retrieved (no backing chunk) is never fabricated.
+        for match in _INLINE_GUIDELINE_RE.finditer(rendered):
+            ref = match.group(1)
+            if ref in self.citation_sources or ref not in retrieved_refs:
+                continue
+            cit = self._citation_for(ref, retrieved_data)
+            if cit is None:
+                continue
+            self.citation_sources[ref] = {
+                "ref": ref,
+                "type": cit["source_type"],
+                "section": cit["page_or_section"],
+                "text": cit["quote_or_value"],
+            }
 
         has_guideline = any(
             ref.startswith("guideline:") for ref in surviving.values()
