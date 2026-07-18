@@ -56,7 +56,7 @@ OE_AI_AGENT_SIGNING_KEY=
 ```
 ## Architecture Diagram
 
-Week 1 [here](W!_ARCHITECTURE_DIAGRAM.md)\
+Week 1 [here](W1_ARCHITECTURE_DIAGRAM.md)\
 Week 2 [here](W2_ARCHITECTURE_DIAGRAM.md)
 
 ## Engineering Deliverables
