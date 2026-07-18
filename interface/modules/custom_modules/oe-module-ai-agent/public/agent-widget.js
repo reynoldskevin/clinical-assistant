@@ -1443,8 +1443,8 @@
         function fmtAxisDate(iso) {
             var parts = String(iso).split('-');
             if (parts.length === 3) {
-                // MM/DD/YY — narrow enough to sit under a point without wrapping.
-                return parts[1] + '/' + parts[2] + '/' + parts[0].slice(2);
+                // mm/dd — narrow enough to sit under a point without wrapping.
+                return parts[1] + '/' + parts[2];
             }
             return String(iso);
         }
@@ -1488,9 +1488,13 @@
             var innerH = height - padTop - padBottom;
             var svg = document.createElementNS(SVG_NS, 'svg');
             svg.setAttribute('class', 'oe-ai-agent-trends-chart');
-            svg.setAttribute('width', String(width));
-            svg.setAttribute('height', String(height));
+            // Responsive: the SVG stretches to the container's full width while the
+            // viewBox keeps a fixed internal coordinate system for the point/axis math.
+            svg.setAttribute('width', '100%');
             svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+            svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+            svg.style.display = 'block';
+            svg.style.height = 'auto';
 
             var points = series.points;
             var times = points.map(function (p) { return Date.parse(p.date); });
@@ -1639,7 +1643,16 @@
             trendsBox.appendChild(err);
         }
 
+        var trendsOpen = false;
+
         trendsBtn.addEventListener('click', function () {
+            // Toggle: a second click while the chart is open closes it.
+            if (trendsOpen) {
+                trendsBox.textContent = '';
+                trendsOpen = false;
+                trendsBtn.setAttribute('aria-expanded', 'false');
+                return;
+            }
             trendsBtn.disabled = true;
             mintToken().then(function (jwt) {
                 return fetch(readUrl, {
@@ -1662,10 +1675,14 @@
                 return res.json();
             }).then(function (rows) {
                 render(groupSeries(Array.isArray(rows) ? rows : []));
+                trendsOpen = true;
+                trendsBtn.setAttribute('aria-expanded', 'true');
             }).catch(function () {
                 // Never surface internal detail (e.g. the token); a friendly
-                // message only.
+                // message only. The message stays open so a second click clears it.
                 showError();
+                trendsOpen = true;
+                trendsBtn.setAttribute('aria-expanded', 'true');
             }).finally(function () {
                 trendsBtn.disabled = false;
             });
