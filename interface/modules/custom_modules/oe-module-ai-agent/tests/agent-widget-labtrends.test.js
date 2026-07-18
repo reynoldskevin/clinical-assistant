@@ -157,6 +157,58 @@ describe('agent-widget: lab trend chart', () => {
         expect(el('.oe-ai-agent-trends-range').textContent).toContain('70-99');
     });
 
+    test('the Y axis shows value ticks that accurately span the series on the point scale', async () => {
+        document.body.innerHTML = SCAFFOLD;
+        installFetch(CONTRACT_ROWS);
+        loadWidget();
+
+        openTrends();
+        await flushAll();
+
+        // Glucose (default): values 95, 110, 142.
+        const yticks = els('.oe-ai-agent-trends .oe-ai-agent-trends-ytick');
+        expect(yticks.length).toBeGreaterThanOrEqual(2);
+        const yvals = yticks.map(function (t) { return Number(t.getAttribute('data-value')); });
+        // The axis labels are the REAL data extent, not arbitrary numbers.
+        expect(Math.min.apply(null, yvals)).toBe(95);
+        expect(Math.max.apply(null, yvals)).toBe(142);
+        // Monotonic and each label prints its own value.
+        expect(yvals.slice().sort(function (a, b) { return a - b; })).toEqual(yvals.slice());
+        yticks.forEach(function (t) {
+            expect(t.textContent).toContain(String(Number(t.getAttribute('data-value'))));
+        });
+        // POSITION accuracy: the tick for the max value sits at the exact y of the
+        // max data point (same scale used for both), i.e. it isn't a decorative label.
+        const maxPoint = els('.oe-ai-agent-trends .oe-ai-agent-trends-point').filter(function (p) {
+            return Number(p.getAttribute('data-value')) === 142;
+        })[0];
+        const maxTick = yticks.filter(function (t) {
+            return Number(t.getAttribute('data-value')) === 142;
+        })[0];
+        expect(maxTick).toBeTruthy();
+        expect(Number(maxTick.getAttribute('y'))).toBeCloseTo(Number(maxPoint.getAttribute('cy')), 3);
+    });
+
+    test('the X axis shows date ticks aligned to each plotted point', async () => {
+        document.body.innerHTML = SCAFFOLD;
+        installFetch(CONTRACT_ROWS);
+        loadWidget();
+
+        openTrends();
+        await flushAll();
+
+        const xticks = els('.oe-ai-agent-trends .oe-ai-agent-trends-xtick');
+        // One accurate date label per plotted Glucose point, in chronological order.
+        expect(xticks.map(function (t) { return t.getAttribute('data-date'); }))
+            .toEqual(['2019-06-01', '2020-06-01', '2021-06-01']);
+        xticks.forEach(function (t) { expect(t.textContent.length).toBeGreaterThan(0); });
+        // POSITION accuracy: the last date tick aligns with the last point's x.
+        const pts = els('.oe-ai-agent-trends .oe-ai-agent-trends-point');
+        const lastPoint = pts[pts.length - 1];
+        const lastTick = xticks[xticks.length - 1];
+        expect(Number(lastTick.getAttribute('x'))).toBeCloseTo(Number(lastPoint.getAttribute('cx')), 3);
+    });
+
     test('changing the series selector re-renders for the newly-selected test', async () => {
         document.body.innerHTML = SCAFFOLD;
         installFetch(CONTRACT_ROWS);
