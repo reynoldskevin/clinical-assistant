@@ -3,14 +3,14 @@
 /**
  * DocumentUploadPolicy — decides whether an uploaded blob may be stored.
  *
- * The card lets a clinician attach a lab report or intake form to the open chart.
- * T46 stored whatever was posted; T62 hardens that entry point. This policy is
- * the fail-closed gate that runs BEFORE OpenEMR's document store:
+ * The card lets a clinician attach a lab report, intake form, or medication list
+ * to the open chart. T46 stored whatever was posted; T62 hardens that entry point.
+ * This policy is the fail-closed gate that runs BEFORE OpenEMR's document store:
  *
  *  - it identifies the file by its MAGIC NUMBER, never the browser-supplied
  *    Content-Type (which the client controls and can spoof);
- *  - it enforces a per-doc_type allow-list — a lab report must be a PDF; an
- *    intake form may be a PDF or a scanned image (PNG/JPEG);
+ *  - it enforces a per-doc_type allow-list — a lab report and a medication list
+ *    must each be a PDF; an intake form may be a PDF or a scanned image (PNG/JPEG);
  *  - it caps the size so an oversized upload is refused up front.
  *
  * Anything outside the allow-list is refused with a typed {@see UploadRejected}
@@ -41,6 +41,7 @@ final class DocumentUploadPolicy
     private const ALLOWED = [
         'lab_pdf' => ['application/pdf'],
         'intake_form' => ['application/pdf', 'image/png', 'image/jpeg'],
+        'med_list' => ['application/pdf'],
     ];
 
     /**

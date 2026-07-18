@@ -889,7 +889,9 @@
 
             var heading = document.createElement('div');
             heading.className = 'font-weight-bold mb-1';
-            var label = data.doc_type === 'lab_pdf' ? 'Extracted lab result' : 'Extracted intake facts';
+            var label = data.doc_type === 'lab_pdf' ? 'Extracted lab result'
+                : data.doc_type === 'med_list' ? 'Extracted medications'
+                : 'Extracted intake facts';
             var pct = Math.round((Number(data.confidence) || 0) * 100);
             heading.textContent = label + ' · confidence ' + pct + '%';
             panel.appendChild(heading);
