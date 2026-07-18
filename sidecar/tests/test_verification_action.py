@@ -67,6 +67,42 @@ def test_v8_does_not_block_descriptive_facts_or_refusals():
         ), f"false positive unsafe_action flag on: {draft!r}"
 
 
+def test_v8_does_not_block_reported_or_third_party_recommendations():
+    # The Co-Pilot REPORTING what a guideline / note / provider recommended is a
+    # legitimate cited factual/evidence answer (cf. the T50 guideline-evidence
+    # split) — NOT the assistant issuing a directive. Only first-person /
+    # imperative "assistant-voice" directives are unsafe; reported ones are facts.
+    reported = [
+        "Guidelines recommend increasing the dose when INR is subtherapeutic [S1].",
+        "The ADA guidelines recommend starting metformin as first-line therapy [S1].",
+        "Per the note, the provider recommended starting insulin [S1].",
+        "The cardiologist recommended discontinuing the beta-blocker [S1].",
+        "The discharge summary advised starting a statin [S1].",
+    ]
+    for draft in reported:
+        v = VerificationGate().verify(draft, [], set())
+        assert not any(
+            f["code"] == "unsafe_action_suggestion" for f in v["flags"]
+        ), f"over-blocked a reported/third-party recommendation: {draft!r}"
+
+
+def test_v8_does_not_block_documented_historical_actions():
+    # Documented history of an action (past tense / passive / mid-sentence) is a
+    # chart fact, not a directive.
+    historical = [
+        "The patient was started on warfarin in 2019 [S1].",
+        "Metformin was increased to 1000 mg last year [S1].",
+        "The patient is scheduled to start dialysis [S1].",
+        "No new medications were ordered [S1].",
+        "The plan documented in the note was to start insulin [S1].",
+    ]
+    for draft in historical:
+        v = VerificationGate().verify(draft, [], set())
+        assert not any(
+            f["code"] == "unsafe_action_suggestion" for f in v["flags"]
+        ), f"over-blocked a documented historical action: {draft!r}"
+
+
 def test_v8_imperative_directive_vs_historical_passive_are_discriminated():
     # The discriminating pair: imperative "Discontinue ..." blocks; the passive
     # historical "was discontinued ..." does not.
