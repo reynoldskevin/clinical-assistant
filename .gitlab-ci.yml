@@ -86,7 +86,11 @@ eval:offline:
   script:
     - python -m pytest -c sidecar/pytest.ini sidecar/tests
 
-# Live scored sweep against the real agent+LLM. Non-blocking (manual + allow_failure).
+# Live scored sweep against the real agent+LLM (exit 1 below the pass-rate
+# threshold). BLOCKING when an ANTHROPIC_API_KEY is configured (e.g. during
+# grading): it then runs automatically on merge-request and branch pipelines and
+# a regression reds the pipeline. With no key it stays manual + allow_failure, so
+# a keyless pipeline is never broken by it.
 eval:live:
   stage: eval
   before_script:
@@ -99,11 +103,17 @@ eval:live:
   variables:
     ANTHROPIC_API_KEY: $ANTHROPIC_API_KEY
   rules:
+    # Key configured: run automatically on MRs and branch pushes and BLOCK on a
+    # regression (this is what the grading gate exercises).
+    - if: '$ANTHROPIC_API_KEY && $CI_PIPELINE_SOURCE == "merge_request_event"'
+      allow_failure: false
+    - if: '$ANTHROPIC_API_KEY && $CI_COMMIT_BRANCH'
+      allow_failure: false
     # Scheduled runs and release tags run it automatically (still non-blocking).
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
       allow_failure: true
     - if: '$CI_COMMIT_TAG'
       allow_failure: true
-    # On everything else (web / RUN_EVAL_CI) it is manual and never blocks.
+    # No key (or web / RUN_EVAL_CI): manual and never blocks.
     - when: manual
       allow_failure: true
