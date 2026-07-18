@@ -65,6 +65,20 @@ final class DocumentUploadPolicyTest extends TestCase
         $this->expectRejection(self::PNG, 'lab_pdf', UploadRejectionReason::UnsupportedType);
     }
 
+    public function testAcceptsAPdfForAMedList(): void
+    {
+        // T76: a medication list is a PDF (like a lab report). Before the fix the
+        // allow-list had no med_list entry, so every med-list PDF was refused.
+        $accepted = (new DocumentUploadPolicy())->inspect(self::PDF, 'med_list');
+        $this->assertSame('application/pdf', $accepted->canonicalMimetype);
+    }
+
+    public function testRejectsAnImageDeclaredAsAMedList(): void
+    {
+        // Med lists are PDF-only, exactly like lab reports — an image is refused.
+        $this->expectRejection(self::PNG, 'med_list', UploadRejectionReason::UnsupportedType);
+    }
+
     public function testRejectsAContentTypeSpoof(): void
     {
         // The bytes are a Windows executable ("MZ"); no declared mimetype can make
