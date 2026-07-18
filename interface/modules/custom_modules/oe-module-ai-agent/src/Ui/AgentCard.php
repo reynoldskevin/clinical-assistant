@@ -58,6 +58,8 @@ final class AgentCard
                 placeholder="Ask about this patient..." aria-label="Question for the AI Clinical Co-Pilot"></textarea>
             <button type="submit" class="oe-ai-agent-submit btn btn-primary btn-sm mt-1">Ask</button>
         </form>
+        <button type="button" class="oe-ai-agent-trends-btn btn btn-outline-secondary btn-sm mt-2">Lab trends</button>
+        <div class="oe-ai-agent-trends mt-2"></div>
         <form class="oe-ai-agent-upload-form d-flex flex-wrap align-items-center justify-content-end mt-2">
             <span class="oe-ai-agent-upload-status small mb-0 mr-2" role="status" aria-live="polite"></span>
             <label class="oe-ai-agent-upload-label small text-muted mb-0 mr-2">Upload a document</label>

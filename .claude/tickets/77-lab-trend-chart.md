@@ -1,7 +1,7 @@
 ---
 id: 77
 title: Lab trend chart widget (get_results → inline SVG time series)
-status: tests-authored
+status: ready-for-merge
 depends_on: []
 branch: ticket/77-lab-trend-chart
 base_branch: main

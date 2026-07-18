@@ -110,6 +110,7 @@
     var tokenUrl = new URL('token.php', document.currentScript ? document.currentScript.src : window.location.href).href;
     var uploadUrl = new URL('upload.php', document.currentScript ? document.currentScript.src : window.location.href).href;
     var persistUrl = new URL('persist.php', document.currentScript ? document.currentScript.src : window.location.href).href;
+    var readUrl = new URL('read.php', document.currentScript ? document.currentScript.src : window.location.href).href;
     var sidecarUrl = root.dataset.sidecarUrl || '/ai-agent-sidecar/ask';
     // The SSE endpoint is derived from the same base as the buffered /ask URL, so
     // a deployment that overrides data-sidecar-url need only set it once.
@@ -1367,6 +1368,233 @@
                 if (uploadSubmit) {
                     uploadSubmit.disabled = false;
                 }
+            });
+        });
+    })();
+
+    // Lab trends: on demand, fetch the patient's numeric lab results via the
+    // read.php boundary (op:get_results), group them by test name, and render a
+    // dependency-free inline SVG line chart for a selected test. Null-guarded so
+    // scaffolds without the trigger button never throw on load.
+    (function wireTrends() {
+        var trendsBtn = root.querySelector('.oe-ai-agent-trends-btn');
+        var trendsBox = root.querySelector('.oe-ai-agent-trends');
+        if (!trendsBtn || !trendsBox) {
+            return;
+        }
+
+        var SVG_NS = 'http://www.w3.org/2000/svg';
+        // A "positive" abnormal flag; anything else (no/""/normal) is not abnormal.
+        var ABNORMAL = { high: 1, low: 1, yes: 1, abnormal: 1 };
+
+        function isAbnormal(flag) {
+            return ABNORMAL[String(flag || '').toLowerCase()] === 1;
+        }
+
+        // Pure grouping transform: rows -> sorted array of series. Each series is
+        // {name, units, range, points:[{date, value, abnormal}]} with points
+        // date-ascending. Rows with a non-finite value or empty/unparseable date
+        // are dropped; only tests with >=1 surviving point are kept.
+        function groupSeries(rows) {
+            var byName = {};
+            (rows || []).forEach(function (row) {
+                var name = row && row.result_text;
+                if (!name) {
+                    return;
+                }
+                var value = Number(row.result);
+                if (!isFinite(value) || row.result === '' || row.result === null) {
+                    return;
+                }
+                var date = String(row.date || '');
+                if (date === '' || isNaN(Date.parse(date))) {
+                    return;
+                }
+                if (!byName[name]) {
+                    byName[name] = {
+                        name: name,
+                        units: row.units || '',
+                        range: row.range || '',
+                        points: []
+                    };
+                }
+                byName[name].points.push({
+                    date: date,
+                    value: value,
+                    abnormal: isAbnormal(row.abnormal)
+                });
+            });
+
+            return Object.keys(byName).sort().map(function (name) {
+                var series = byName[name];
+                series.points.sort(function (a, b) {
+                    return Date.parse(a.date) - Date.parse(b.date);
+                });
+                return series;
+            });
+        }
+
+        // Render the SVG line chart + point markers for one series.
+        function buildChart(series) {
+            var width = 320;
+            var height = 140;
+            var pad = 20;
+            var svg = document.createElementNS(SVG_NS, 'svg');
+            svg.setAttribute('class', 'oe-ai-agent-trends-chart');
+            svg.setAttribute('width', String(width));
+            svg.setAttribute('height', String(height));
+            svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+
+            var points = series.points;
+            var times = points.map(function (p) { return Date.parse(p.date); });
+            var values = points.map(function (p) { return p.value; });
+            var minT = Math.min.apply(null, times);
+            var maxT = Math.max.apply(null, times);
+            var minV = Math.min.apply(null, values);
+            var maxV = Math.max.apply(null, values);
+
+            function xOf(t) {
+                if (maxT === minT) {
+                    return width / 2;
+                }
+                return pad + (t - minT) / (maxT - minT) * (width - 2 * pad);
+            }
+            function yOf(v) {
+                if (maxV === minV) {
+                    return height / 2;
+                }
+                return height - pad - (v - minV) / (maxV - minV) * (height - 2 * pad);
+            }
+
+            var coords = points.map(function (p, i) {
+                return { x: xOf(times[i]), y: yOf(p.value), p: p };
+            });
+
+            var polyline = document.createElementNS(SVG_NS, 'polyline');
+            polyline.setAttribute('class', 'oe-ai-agent-trends-line');
+            polyline.setAttribute('fill', 'none');
+            polyline.setAttribute('stroke', '#337ab7');
+            polyline.setAttribute('stroke-width', '2');
+            polyline.setAttribute('points', coords.map(function (c) {
+                return c.x + ',' + c.y;
+            }).join(' '));
+            svg.appendChild(polyline);
+
+            coords.forEach(function (c) {
+                var marker = document.createElementNS(SVG_NS, 'circle');
+                marker.setAttribute('class', 'oe-ai-agent-trends-point');
+                marker.setAttribute('cx', String(c.x));
+                marker.setAttribute('cy', String(c.y));
+                marker.setAttribute('r', '3.5');
+                marker.setAttribute('data-date', c.p.date);
+                marker.setAttribute('data-value', String(c.p.value));
+                if (c.p.abnormal) {
+                    marker.setAttribute('data-abnormal', '1');
+                    marker.setAttribute('fill', '#d9534f');
+                } else {
+                    marker.setAttribute('fill', '#337ab7');
+                }
+                svg.appendChild(marker);
+            });
+
+            return svg;
+        }
+
+        // Render (or re-render) the chart area for the selected series. Clears the
+        // chart+range, keeps the selector, and draws the newly-selected test.
+        function renderSelected(series) {
+            var svg = buildChart(series);
+
+            var range = document.createElement('div');
+            range.className = 'oe-ai-agent-trends-range small text-muted mt-1';
+            range.textContent = series.range
+                ? ('Reference range: ' + series.range
+                    + (series.units ? ' ' + series.units : ''))
+                : 'Reference range: not available';
+
+            return { svg: svg, range: range };
+        }
+
+        function render(seriesList) {
+            trendsBox.textContent = '';
+
+            if (!seriesList.length) {
+                var empty = document.createElement('div');
+                empty.className = 'small text-muted';
+                empty.textContent = 'No numeric lab results to chart.';
+                trendsBox.appendChild(empty);
+                return;
+            }
+
+            var select = document.createElement('select');
+            select.className = 'oe-ai-agent-trends-select custom-select custom-select-sm w-auto';
+            seriesList.forEach(function (series) {
+                var option = document.createElement('option');
+                option.value = series.name;
+                option.textContent = series.name;
+                select.appendChild(option);
+            });
+            select.value = seriesList[0].name;
+            trendsBox.appendChild(select);
+
+            var chartWrap = document.createElement('div');
+            chartWrap.className = 'oe-ai-agent-trends-chart-wrap';
+            trendsBox.appendChild(chartWrap);
+
+            function draw(name) {
+                var series = seriesList.filter(function (s) {
+                    return s.name === name;
+                })[0] || seriesList[0];
+                chartWrap.textContent = '';
+                var parts = renderSelected(series);
+                chartWrap.appendChild(parts.svg);
+                chartWrap.appendChild(parts.range);
+            }
+
+            select.addEventListener('change', function () {
+                draw(select.value);
+            });
+
+            draw(select.value);
+        }
+
+        function showError() {
+            trendsBox.textContent = '';
+            var err = document.createElement('div');
+            err.className = 'small text-danger';
+            err.textContent = "Couldn't load lab trends.";
+            trendsBox.appendChild(err);
+        }
+
+        trendsBtn.addEventListener('click', function () {
+            trendsBtn.disabled = true;
+            mintToken().then(function (jwt) {
+                return fetch(readUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + jwt
+                    },
+                    body: JSON.stringify({
+                        op: 'get_results',
+                        pid: parseInt(root.dataset.pid, 10),
+                        params: {}
+                    })
+                });
+            }).then(function (res) {
+                if (!res.ok) {
+                    throw new Error('read failed');
+                }
+                return res.json();
+            }).then(function (rows) {
+                render(groupSeries(Array.isArray(rows) ? rows : []));
+            }).catch(function () {
+                // Never surface internal detail (e.g. the token); a friendly
+                // message only.
+                showError();
+            }).finally(function () {
+                trendsBtn.disabled = false;
             });
         });
     })();
