@@ -58,12 +58,16 @@ def main() -> None:
         "INSERT INTO patient_data (pid, pubpid, fname, lname, DOB, sex, date) "
         "VALUES (998, 'EVAL998', 'Evan', 'Testchart', '1950-01-01', 'Male', NOW());"
     )
-    print(
+    # B608: the only interpolated value is `b64`, the base64-charset content of a
+    # committed fixture (no user input, no quotes) — not an SQL-injection vector.
+    # This is a dev-only, offline seed GENERATOR (it prints SQL; it opens no DB).
+    documents_insert = (
         "INSERT INTO documents "
         "(foreign_id, mimetype, name, documentationOf, docdate, date, revision, deleted, document_data) "
-        f"VALUES (998, 'image/png', 'synthetic_intake_form.png', 'intake_form', "
-        f"NOW(), NOW(), NOW(), 0, '{b64}');"
+        "VALUES (998, 'image/png', 'synthetic_intake_form.png', 'intake_form', "
+        f"NOW(), NOW(), NOW(), 0, '{b64}');"  # nosec B608
     )
+    print(documents_insert)
 
 
 if __name__ == "__main__":
