@@ -13,10 +13,15 @@ from fpdf import FPDF
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
+# Deliberately DISTINCT from the synthetic intake form's medication list
+# (Lisinopril / Metformin / Atorvastatin) so the two demo documents contribute
+# non-overlapping medications to the chart — different drug classes (thyroid,
+# PPI, SSRI, inhaled bronchodilator) than the intake form's cardiometabolic set.
 MEDICATIONS = [
-    "Lisinopril 10 mg PO once daily",
-    "Metformin 500 mg PO twice daily",
-    "Atorvastatin 20 mg PO at night",
+    "Levothyroxine 75 mcg PO once daily",
+    "Omeprazole 20 mg PO once daily",
+    "Sertraline 50 mg PO once daily",
+    "Albuterol HFA 90 mcg, 2 puffs inhaled every 4-6 hours as needed",
 ]
 
 
