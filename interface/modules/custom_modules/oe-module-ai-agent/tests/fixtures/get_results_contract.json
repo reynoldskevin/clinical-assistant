@@ -1,0 +1,68 @@
+[
+    {
+        "ref": "result:1001",
+        "result_code": "2339-0",
+        "result_text": "Glucose",
+        "result": "95",
+        "units": "mg/dL",
+        "range": "70-99",
+        "abnormal": "no",
+        "date": "2019-06-01",
+        "result_status": "final"
+    },
+    {
+        "ref": "result:1002",
+        "result_code": "2339-0",
+        "result_text": "Glucose",
+        "result": "142",
+        "units": "mg/dL",
+        "range": "70-99",
+        "abnormal": "high",
+        "date": "2021-06-01",
+        "result_status": "final"
+    },
+    {
+        "ref": "result:1003",
+        "result_code": "2339-0",
+        "result_text": "Glucose",
+        "result": "110",
+        "units": "mg/dL",
+        "range": "70-99",
+        "abnormal": "no",
+        "date": "2020-06-01",
+        "result_status": "final"
+    },
+    {
+        "ref": "result:1004",
+        "result_code": "4548-4",
+        "result_text": "HbA1c",
+        "result": "7.8",
+        "units": "%",
+        "range": "4.0-5.6",
+        "abnormal": "yes",
+        "date": "2020-06-01",
+        "result_status": "final"
+    },
+    {
+        "ref": "result:1005",
+        "result_code": "600-7",
+        "result_text": "Blood culture",
+        "result": "positive",
+        "units": "",
+        "range": "",
+        "abnormal": "yes",
+        "date": "2021-01-01",
+        "result_status": "final"
+    },
+    {
+        "ref": "result:1006",
+        "result_code": "2339-0",
+        "result_text": "Glucose",
+        "result": "130",
+        "units": "mg/dL",
+        "range": "70-99",
+        "abnormal": "no",
+        "date": "",
+        "result_status": "final"
+    }
+]

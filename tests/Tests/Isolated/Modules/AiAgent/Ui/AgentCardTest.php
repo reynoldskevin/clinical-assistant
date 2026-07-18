@@ -54,4 +54,20 @@ final class AgentCardTest extends TestCase
         // the med_list option carries a human-readable label
         $this->assertMatchesRegularExpression('/value="med_list"[^>]*>\s*Medication List/i', $html);
     }
+
+    public function testRendersTheOnDemandLabTrendsTriggerAndContainer(): void
+    {
+        // T77: the card offers a "Lab trends" chart on demand — an explicit
+        // trigger button (a real type="button", NOT a form-submit) plus an empty
+        // container the widget renders the inline SVG chart into.
+        $html = AgentCard::render(1);
+        $this->assertStringContainsString('oe-ai-agent-trends-btn', $html);
+        // it is a button element with type="button" so it never submits a form
+        $this->assertMatchesRegularExpression(
+            '/<button[^>]*\btype="button"[^>]*\boe-ai-agent-trends-btn|<button[^>]*\boe-ai-agent-trends-btn[^>]*\btype="button"/i',
+            $html
+        );
+        // and an (initially empty) chart container the widget populates
+        $this->assertMatchesRegularExpression('/class="[^"]*\boe-ai-agent-trends\b[^"]*"/', $html);
+    }
 }
