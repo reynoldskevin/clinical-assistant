@@ -1,7 +1,7 @@
 ---
 id: 84
 title: LabFactPersister must file when the collection date is missing (strict SQL)
-status: tests-authored
+status: ready-for-merge
 depends_on: []
 branch: ticket/84-lab-persist-strict-date
 base_branch: main

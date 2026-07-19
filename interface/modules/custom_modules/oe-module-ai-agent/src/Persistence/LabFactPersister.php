@@ -61,11 +61,15 @@ final class LabFactPersister
         $sourceCitation = $this->field($fact, 'source_citation');
         $loinc = $this->field($fact, 'loinc');
 
-        $dateOrDefault = $collectionDate !== '' ? $collectionDate : date('Y-m-d');
+        // Normalize the extracted date: a canonical Y-m-d when it parses to a
+        // real date, else null. The nullable datetime columns get null (stored
+        // as SQL NULL); the required date fields fall back to today.
+        $normalizedDate = $this->normalizeDate($collectionDate);
+        $dateOrDefault = $normalizedDate ?? date('Y-m-d');
 
         // 3. Insert the new lab chain.
-        $newOrderId = $this->insertOrder($pid, $createdBy, $collectionDate, $dateOrDefault);
-        $newReportId = $this->insertReport($newOrderId, $collectionDate, $createdBy);
+        $newOrderId = $this->insertOrder($pid, $createdBy, $normalizedDate, $dateOrDefault);
+        $newReportId = $this->insertReport($newOrderId, $normalizedDate, $createdBy);
         $this->insertResult(
             $newReportId,
             $loinc,
@@ -118,7 +122,7 @@ final class LabFactPersister
         $delOrder->execute();
     }
 
-    private function insertOrder(int $pid, int $createdBy, string $collectionDate, string $dateOrDefault): int
+    private function insertOrder(int $pid, int $createdBy, ?string $collectionDate, string $dateOrDefault): int
     {
         $stmt = $this->db->prepare(
             'INSERT INTO procedure_order '
@@ -128,14 +132,14 @@ final class LabFactPersister
         $stmt->bindValue(1, $pid, \PDO::PARAM_INT);
         $stmt->bindValue(2, $createdBy, \PDO::PARAM_INT);
         $stmt->bindValue(3, $dateOrDefault, \PDO::PARAM_STR);
-        $stmt->bindValue(4, $collectionDate, \PDO::PARAM_STR);
+        $this->bindNullableDate($stmt, 4, $collectionDate);
         $stmt->bindValue(5, 'completed', \PDO::PARAM_STR);
         $stmt->execute();
 
         return (int) $this->db->lastInsertId();
     }
 
-    private function insertReport(int $orderId, string $collectionDate, int $createdBy): int
+    private function insertReport(int $orderId, ?string $collectionDate, int $createdBy): int
     {
         $stmt = $this->db->prepare(
             'INSERT INTO procedure_report '
@@ -143,8 +147,8 @@ final class LabFactPersister
             . 'VALUES (?, ?, ?, ?, ?, ?)'
         );
         $stmt->bindValue(1, $orderId, \PDO::PARAM_INT);
-        $stmt->bindValue(2, $collectionDate, \PDO::PARAM_STR);
-        $stmt->bindValue(3, $collectionDate, \PDO::PARAM_STR);
+        $this->bindNullableDate($stmt, 2, $collectionDate);
+        $this->bindNullableDate($stmt, 3, $collectionDate);
         $stmt->bindValue(4, 'final', \PDO::PARAM_STR);
         $stmt->bindValue(5, 'received', \PDO::PARAM_STR);
         $stmt->bindValue(6, $createdBy, \PDO::PARAM_INT);
@@ -194,6 +198,47 @@ final class LabFactPersister
     private function field(array $fact, string $key): string
     {
         return isset($fact[$key]) ? (string) $fact[$key] : '';
+    }
+
+    /**
+     * Normalize an extracted date to a canonical Y-m-d string, or null when the
+     * raw value is empty or does not parse to a real calendar date. Guards
+     * against strict SQL mode (STRICT_TRANS_TABLES,NO_ZERO_DATE) rejecting ''
+     * or an unparseable string in a datetime column.
+     */
+    private function normalizeDate(string $raw): ?string
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return null;
+        }
+
+        // Accept only an ISO Y-m-d (optionally followed by a time), and verify
+        // the calendar values are real (rejects "2026-13-40", "May 2024", etc.).
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})/', $raw, $m) !== 1) {
+            return null;
+        }
+        [, $year, $month, $day] = $m;
+        if (!checkdate((int) $month, (int) $day, (int) $year)) {
+            return null;
+        }
+
+        return sprintf('%04d-%02d-%02d', (int) $year, (int) $month, (int) $day);
+    }
+
+    /**
+     * Bind a nullable date, using PARAM_NULL for null so the column is stored
+     * as SQL NULL rather than being stringified to '' under some drivers.
+     */
+    private function bindNullableDate(\PDOStatement $stmt, int $index, ?string $date): void
+    {
+        if ($date === null) {
+            $stmt->bindValue($index, null, \PDO::PARAM_NULL);
+
+            return;
+        }
+
+        $stmt->bindValue($index, $date, \PDO::PARAM_STR);
     }
 
     private function summary(string $testName, string $value, string $unit): string
