@@ -22,3 +22,19 @@ FROM openemr/openemr:flex
 # Overlay this fork's openemr.sh, which clones into an explicit "openemr" dir.
 COPY docker/flex/openemr.sh /var/www/localhost/htdocs/openemr.sh
 RUN chmod 500 /var/www/localhost/htdocs/openemr.sh
+
+# Tune OPcache for OpenEMR's ~52k PHP files. The stock php.ini caps
+# opcache.max_accelerated_files at 10000 and opcache.memory_consumption at
+# 128M, far below the file count, so OPcache constantly evicts and recompiles
+# scripts on nearly every request. That CPU-bound recompilation is the dominant
+# cost of slow patient-chart loads on this deploy (demographics.php pulls in the
+# largest include chain in the app). Raising the caps lets OPcache hold the full
+# file set in memory. validate_timestamps is left enabled (revalidate every 60s)
+# because the flex image fetches source at runtime, so file mtimes must still be
+# honored to pick up code changes.
+RUN printf '%s\n' \
+    'opcache.memory_consumption=512' \
+    'opcache.interned_strings_buffer=32' \
+    'opcache.max_accelerated_files=65407' \
+    'opcache.revalidate_freq=60' \
+    > /etc/php85/conf.d/zzz-openemr-opcache.ini

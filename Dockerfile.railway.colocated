@@ -1,0 +1,40 @@
+# Railway build target for OpenEMR with a CO-LOCATED database.
+#
+# WHY THIS EXISTS: the default deploy (Dockerfile.railway) reaches a separate
+# Railway MySQL service over the private-network overlay, where every query
+# costs ~3.3 ms. A patient chart fires ~10k queries, so that latency dominates
+# (~33 s/chart). This image instead runs MariaDB *inside* the app container on a
+# loopback socket (~0.1 ms/query), collapsing chart load to ~1-2 s. See
+# docs/railway-db-colocation-plan.md.
+#
+# NOT YET THE ACTIVE DEPLOY TARGET. Dockerfile.railway remains the live one until
+# the Stage-1 import test and Stage-3 cutover pass. To deploy this image, point
+# railway.json's dockerfilePath at this file (or rename it over Dockerfile.railway).
+FROM openemr/openemr:flex
+
+# Bundled database engine + client (Alpine v3.23 ships mariadb 11.4).
+RUN apk add --no-cache mariadb mariadb-client
+
+# The stock flex entrypoint assumes the source repo is named "openemr"; this
+# fork's repo differs, so overlay the fork's openemr.sh (clones into "openemr").
+COPY docker/flex/openemr.sh /var/www/localhost/htdocs/openemr.sh
+RUN chmod 500 /var/www/localhost/htdocs/openemr.sh
+
+# Co-location wrapper: starts local mariadbd (datadir on the container fs at
+# /var/lib/mysql, seeded on boot from the dump kept on the sites volume) then
+# execs the stock openemr.sh against 127.0.0.1. The datadir is intentionally
+# NOT on the volume: the volume mounts under the 0500 apache-owned webroot that
+# mysql cannot traverse. The DB thus resets to the seed baseline on each
+# redeploy/restart (acceptable for this synthetic demo).
+COPY docker/flex/openemr-colocated-entrypoint.sh /var/www/localhost/htdocs/openemr-colocated-entrypoint.sh
+RUN chmod 500 /var/www/localhost/htdocs/openemr-colocated-entrypoint.sh
+
+# Tune OPcache for OpenEMR's ~52k PHP files (see Dockerfile.railway for rationale).
+RUN printf '%s\n' \
+    'opcache.memory_consumption=512' \
+    'opcache.interned_strings_buffer=32' \
+    'opcache.max_accelerated_files=65407' \
+    'opcache.revalidate_freq=60' \
+    > /etc/php85/conf.d/zzz-openemr-opcache.ini
+
+ENTRYPOINT ["/var/www/localhost/htdocs/openemr-colocated-entrypoint.sh"]
