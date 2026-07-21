@@ -1,0 +1,7 @@
+# Railway build context for Dockerfile.railway only needs docker/flex/openemr.sh
+# (FROM openemr/openemr:flex; the app source is fetched at runtime from
+# FLEX_REPOSITORY). Exclude heavy directories so `railway up` uploads stay small.
+node_modules/
+vendor/
+.git/
+tests/
