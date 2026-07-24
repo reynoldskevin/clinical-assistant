@@ -87,7 +87,10 @@ def test_max_tool_calls_budget_caps_executions_and_forces_final_answer():
     spec = _spec("list_encounters", lambda pid, inp: [{"encounter": 1}])
 
     agent = ClaudeAgent(creator, RecordingBoundary({}), extra_tools=[spec], observer=obs, max_tool_calls=3)
-    result = agent.run("keep going forever", pid=42)
+    # A benign clinical prompt: the BudgetCreator loops on tool offers regardless
+    # of the question, so the text only needs to NOT trip the request guard (a
+    # "keep going forever" style prompt is now correctly refused up front).
+    result = agent.run("Summarize this patient's full encounter history.", pid=42)
 
     # startswith, not equality: T30 appends a completeness-boundary disclosure on
     # the budget-exhausted path (this is that path). The clinical text is intact.
