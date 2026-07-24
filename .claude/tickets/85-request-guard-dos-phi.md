@@ -1,7 +1,7 @@
 ---
 id: 085
 title: input guardrail refuses DoS/manipulation prompts without leaking PHI
-status: tests-authored
+status: ready-for-merge
 depends_on: []
 branch: ticket/85-request-guard-dos-phi
 base_branch: main
@@ -27,3 +27,6 @@ Two red-team findings (VULN-denial_of_service-9a0c65e6, -06edd052) showed the Co
 - unit (`tests/test_request_guard.py`): both reproduction prompts flag with the correct `reason`; a no-false-positive battery of legitimate clinical questions stays unblocked; edge cases (small counts like "5 times" don't trip the loop rule; "again" alone doesn't; empty/whitespace question is unblocked); verdict dataclass shape and immutability.
 - integration (`tests/test_agent_request_guard.py`, using the ScriptedCreator/RecordingBoundary fakes from the existing test_agent style): each reproduction prompt → `run`/`run_turn` returns the PHI-free refusal with `creator.calls == []` and `boundary.pids == []`; returned refusal is digit-free and contains none of the attack's injected patient tokens; a benign question still invokes the creator; `on_event` receives one `refused` event and the observer records a `blocked` verdict; the assistant turn is appended to history.
 - prompt guard (in the integration file): `_SYSTEM_PROMPT` contains the new anti-PHI-on-refusal clause.
+
+## Outcome
+Implemented `sidecar/request_guard.py` (pure classifier) and wired it into `ClaudeAgent.run_turn` with a PHI-free, digit-free refusal that makes zero model/tool calls on a blocked turn; added the system-prompt anti-PHI-on-decline clause. Both red-team reproduction prompts are refused with no chart data fetched. The reviewer pass (run by the orchestrator after the sub-agent reviewer died on repeated infra errors) caught a BLOCKING false positive — bare "times" + any clinical value ≥25 wrongly refused "how many times has the systolic been over 140?" — which was fixed by requiring an explicit repetition instruction (verb/loop phrase) paired with a large count or unbounded word, dropping bare "times"/"in a row"/"in sequence". Ticket tests: 36 passed. Full sidecar suite: 751 passed, 2 skipped. Known limitation (documented, accepted as non-blocking): a rare descriptive past-tense phrasing that pairs a repeat-verb with a large number (e.g. "labs repeated across 30 encounters") can still over-trigger a refusal; tightening it risks under-blocking real "repeating" attacks, and the guard is defense-in-depth over the existing per-turn tool budget.
