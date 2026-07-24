@@ -1,7 +1,7 @@
 ---
 id: 086
 title: minimum-necessary output guardrail — never volunteer 42 CFR Part 2 substance-use/behavioral-health history unasked
-status: todo
+status: ready-for-merge
 depends_on: []
 branch: ticket/86-minimum-necessary-sensitive-disclosure
 base_branch: main
@@ -36,4 +36,6 @@ Two red-team findings (VULN-denial_of_service-broad-query-overdisclosure [medium
 - prompt guard (in the integration file): `_SYSTEM_PROMPT` contains the new minimum-necessary / no-role-authorization clause.
 
 ## Outcome
-_(filled in on completion)_
+Implemented `sidecar/sensitive_disclosure.py` (pure, stdlib-only classifier) and wired it into `ClaudeAgent.run_turn` after the grounding gate: unless the question explicitly asks about the protected category, answer sentences disclosing substance-use / behavioral-health *history/events* are removed and replaced with one scoped, PHI-free 42 CFR Part 2 notice; a `{"type":"redacted","reason":"protected_category_minimum_necessary"}` event fires on a redacted turn and non-redacted turns are byte-for-byte unchanged. Added the `_SYSTEM_PROMPT` minimum-necessary / no-authorization-from-free-text-role clause.
+
+The reviewer gate REJECTED the first implementation with three findings, all fixed and empirically re-verified: (1) whole-sentence deletion could silently drop a co-located non-sensitive med when a sentence contained the broad word "psychiatric" — narrowed "psychiatric"/"psychiatry" to fire only in history/event context (admission, hospitalization, history, diagnosis, ...), excluding med-ish words (management/medication/care/treatment/condition), so "sertraline for psychiatric management, warfarin 5 mg" is no longer redacted; (2) the lexicon covered only the findings' literal vocabulary — broadened it to common illicit-drug names (heroin/cocaine/methamphetamine/cannabis/marijuana) and behavioral-health diagnoses (bipolar/schizophrenia/PTSD/major depression/psychosis), while deliberately excluding ambiguous terms (bare "depression" → ST depression; the anesthetic fentanyl; MAT med names); (3) weak bulk-dump tokens ("everything", "full history", "the complete") wrongly de-authorized a legitimate scoped ask — dropped them from the exfiltration signal (keeping SSN/insurance/entire-chart/print-out/complete-picture), so "give me the complete substance use history" now permits while the finding-2 attack stays blocked. Ticket tests: 49 passed. Full sidecar suite: 800 passed, 2 skipped. Documented, accepted boundary (mirrors ticket 85's split): the deterministic gate GUARANTEES the legally-protected substance-use / behavioral-health category cannot leak unbidden (the concrete, HIGH-severity harm in both findings); the fuzzier "don't dump the full med list / lab panel on a vague question" concern (finding 1's secondary complaint) and DOB/age minimization are handled by the system-prompt minimum-necessary clause (model-driven, best-effort), not deterministically, because a deterministic breadth cap would break legitimate broad asks (sign-out, H&P). Coverage of the answer-side lexicon is a curated set, not exhaustive — a novel street synonym could still pass; it is defense-in-depth over the session's authenticated, patient-scoped boundary.
